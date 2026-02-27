@@ -1,10 +1,6 @@
-from memory import OpaquePointer, UnsafePointer
 from math import exp, log, log1p, sqrt, tan
 from ziggurat_constants import _KI_DOUBLE, _WI_DOUBLE, _FI_DOUBLE, _ZIGGURAT_NOR_R, _ZIGGURAT_NOR_INV_R
-
-comptime MutU64Ptr = UnsafePointer[mut=True, type=UInt64, origin=MutAnyOrigin]
-comptime MutOpaqueAny = OpaquePointer[mut=True, origin=MutAnyOrigin]
-comptime MutF64Ptr = UnsafePointer[mut=True, type=Scalar[DType.float64], origin=MutAnyOrigin]
+from abi_types import MutU64Ptr, MutOpaqueAny, MutF64ScalarPtr
 
 @always_inline
 fn _rng_rotl(x: UInt64, k: Int) -> UInt64:
@@ -75,7 +71,7 @@ fn _mojor_sample_pick_index(
     return chosen
 
 @always_inline
-fn _rng_out_f64_ptr(out_ptr: MutOpaqueAny) -> MutF64Ptr:
+fn _rng_out_f64_ptr(out_ptr: MutOpaqueAny) -> MutF64ScalarPtr:
     return out_ptr.bitcast[Scalar[DType.float64]]()
 
 @always_inline

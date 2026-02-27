@@ -3356,20 +3356,24 @@ fn _idxplan_f32_free_handle(plan_handle: MutGpuIdxPlanF32Ptr) -> Int32:
     plan_handle.free()
     return 1
 
-fn _idxplan_f32_new(
-    ctxp: MutCtxPtr,
+@fieldwise_init
+struct IdxPlanShape(Movable):
+    var valid: Bool
+    var ndim_i: Int
+    var idx_data_n: Int
+    var out_n: Int
+    var full_n: Int
+
+fn _idxplan_validate_shape(
     idx_data_ptr: ImmutOpaqueAny,
     idx_offsets_ptr: ImmutOpaqueAny,
     idx_lens_ptr: ImmutOpaqueAny,
     dims_ptr: ImmutOpaqueAny,
     ndim: Int32
-) -> MutGpuIdxPlanF32Ptr:
-    if not gpu_ready(ctxp):
-        return _null_idxplan_f32()
-
+) -> IdxPlanShape:
     var ndim_i = Int(ndim)
     if ndim_i <= 0:
-        return _null_idxplan_f32()
+        return IdxPlanShape(valid=False, ndim_i=0, idx_data_n=0, out_n=0, full_n=0)
 
     var idx_data_raw: UnsafePointer[mut=False, type=Int32, origin=ImmutAnyOrigin] = idx_data_ptr.bitcast[Int32]()
     var idx_offsets_raw: UnsafePointer[mut=False, type=Int32, origin=ImmutAnyOrigin] = idx_offsets_ptr.bitcast[Int32]()
@@ -3384,16 +3388,16 @@ fn _idxplan_f32_new(
         var idx_len = Int(idx_lens_raw[axis])
         var dim = Int(dims_raw[axis])
         if idx_off != idx_data_n or idx_len <= 0 or dim <= 0:
-            return _null_idxplan_f32()
+            return IdxPlanShape(valid=False, ndim_i=0, idx_data_n=0, out_n=0, full_n=0)
         idx_data_n += idx_len
         out_n *= idx_len
         full_n *= dim
         if out_n <= 0 or full_n <= 0:
-            return _null_idxplan_f32()
+            return IdxPlanShape(valid=False, ndim_i=0, idx_data_n=0, out_n=0, full_n=0)
     if idx_data_n <= 0 or out_n <= 0 or full_n <= 0:
-        return _null_idxplan_f32()
+        return IdxPlanShape(valid=False, ndim_i=0, idx_data_n=0, out_n=0, full_n=0)
     if not gpu_limit_ok(idx_data_n + (3 * ndim_i), 2, 4):
-        return _null_idxplan_f32()
+        return IdxPlanShape(valid=False, ndim_i=0, idx_data_n=0, out_n=0, full_n=0)
 
     for axis in range(ndim_i):
         var idx_off = Int(idx_offsets_raw[axis])
@@ -3402,8 +3406,45 @@ fn _idxplan_f32_new(
         for j in range(idx_len):
             var idx_val = Int(idx_data_raw[idx_off + j])
             if idx_val < 0 or idx_val >= dim:
-                return _null_idxplan_f32()
+                return IdxPlanShape(valid=False, ndim_i=0, idx_data_n=0, out_n=0, full_n=0)
 
+    return IdxPlanShape(
+        valid=True,
+        ndim_i=ndim_i,
+        idx_data_n=idx_data_n,
+        out_n=out_n,
+        full_n=full_n
+    )
+
+fn _idxplan_f32_new(
+    ctxp: MutCtxPtr,
+    idx_data_ptr: ImmutOpaqueAny,
+    idx_offsets_ptr: ImmutOpaqueAny,
+    idx_lens_ptr: ImmutOpaqueAny,
+    dims_ptr: ImmutOpaqueAny,
+    ndim: Int32
+) -> MutGpuIdxPlanF32Ptr:
+    if not gpu_ready(ctxp):
+        return _null_idxplan_f32()
+
+    var shape = _idxplan_validate_shape(
+        idx_data_ptr,
+        idx_offsets_ptr,
+        idx_lens_ptr,
+        dims_ptr,
+        ndim
+    )
+    if not shape.valid:
+        return _null_idxplan_f32()
+    var ndim_i = shape.ndim_i
+    var idx_data_n = shape.idx_data_n
+    var out_n = shape.out_n
+    var full_n = shape.full_n
+
+    var idx_data_raw: UnsafePointer[mut=False, type=Int32, origin=ImmutAnyOrigin] = idx_data_ptr.bitcast[Int32]()
+    var idx_offsets_raw: UnsafePointer[mut=False, type=Int32, origin=ImmutAnyOrigin] = idx_offsets_ptr.bitcast[Int32]()
+    var idx_lens_raw: UnsafePointer[mut=False, type=Int32, origin=ImmutAnyOrigin] = idx_lens_ptr.bitcast[Int32]()
+    var dims_raw: UnsafePointer[mut=False, type=Int32, origin=ImmutAnyOrigin] = dims_ptr.bitcast[Int32]()
     try:
         var idx_data_host = ctxp[0].enqueue_create_host_buffer[DType.int32](idx_data_n)
         var idx_offsets_host = ctxp[0].enqueue_create_host_buffer[DType.int32](ndim_i)
@@ -3535,43 +3576,24 @@ fn _idxplan_f64_new(
     if not gpu_ready(ctxp):
         return _null_idxplan_f64()
 
-    var ndim_i = Int(ndim)
-    if ndim_i <= 0:
+    var shape = _idxplan_validate_shape(
+        idx_data_ptr,
+        idx_offsets_ptr,
+        idx_lens_ptr,
+        dims_ptr,
+        ndim
+    )
+    if not shape.valid:
         return _null_idxplan_f64()
+    var ndim_i = shape.ndim_i
+    var idx_data_n = shape.idx_data_n
+    var out_n = shape.out_n
+    var full_n = shape.full_n
 
     var idx_data_raw: UnsafePointer[mut=False, type=Int32, origin=ImmutAnyOrigin] = idx_data_ptr.bitcast[Int32]()
     var idx_offsets_raw: UnsafePointer[mut=False, type=Int32, origin=ImmutAnyOrigin] = idx_offsets_ptr.bitcast[Int32]()
     var idx_lens_raw: UnsafePointer[mut=False, type=Int32, origin=ImmutAnyOrigin] = idx_lens_ptr.bitcast[Int32]()
     var dims_raw: UnsafePointer[mut=False, type=Int32, origin=ImmutAnyOrigin] = dims_ptr.bitcast[Int32]()
-
-    var idx_data_n = 0
-    var out_n = 1
-    var full_n = 1
-    for axis in range(ndim_i):
-        var idx_off = Int(idx_offsets_raw[axis])
-        var idx_len = Int(idx_lens_raw[axis])
-        var dim = Int(dims_raw[axis])
-        if idx_off != idx_data_n or idx_len <= 0 or dim <= 0:
-            return _null_idxplan_f64()
-        idx_data_n += idx_len
-        out_n *= idx_len
-        full_n *= dim
-        if out_n <= 0 or full_n <= 0:
-            return _null_idxplan_f64()
-    if idx_data_n <= 0 or out_n <= 0 or full_n <= 0:
-        return _null_idxplan_f64()
-    if not gpu_limit_ok(idx_data_n + (3 * ndim_i), 2, 4):
-        return _null_idxplan_f64()
-
-    for axis in range(ndim_i):
-        var idx_off = Int(idx_offsets_raw[axis])
-        var idx_len = Int(idx_lens_raw[axis])
-        var dim = Int(dims_raw[axis])
-        for j in range(idx_len):
-            var idx_val = Int(idx_data_raw[idx_off + j])
-            if idx_val < 0 or idx_val >= dim:
-                return _null_idxplan_f64()
-
     try:
         var idx_data_host = ctxp[0].enqueue_create_host_buffer[DType.int32](idx_data_n)
         var idx_offsets_host = ctxp[0].enqueue_create_host_buffer[DType.int32](ndim_i)
@@ -3703,43 +3725,24 @@ fn _idxplan_i32_new(
     if not gpu_ready(ctxp):
         return _null_idxplan_i32()
 
-    var ndim_i = Int(ndim)
-    if ndim_i <= 0:
+    var shape = _idxplan_validate_shape(
+        idx_data_ptr,
+        idx_offsets_ptr,
+        idx_lens_ptr,
+        dims_ptr,
+        ndim
+    )
+    if not shape.valid:
         return _null_idxplan_i32()
+    var ndim_i = shape.ndim_i
+    var idx_data_n = shape.idx_data_n
+    var out_n = shape.out_n
+    var full_n = shape.full_n
 
     var idx_data_raw: UnsafePointer[mut=False, type=Int32, origin=ImmutAnyOrigin] = idx_data_ptr.bitcast[Int32]()
     var idx_offsets_raw: UnsafePointer[mut=False, type=Int32, origin=ImmutAnyOrigin] = idx_offsets_ptr.bitcast[Int32]()
     var idx_lens_raw: UnsafePointer[mut=False, type=Int32, origin=ImmutAnyOrigin] = idx_lens_ptr.bitcast[Int32]()
     var dims_raw: UnsafePointer[mut=False, type=Int32, origin=ImmutAnyOrigin] = dims_ptr.bitcast[Int32]()
-
-    var idx_data_n = 0
-    var out_n = 1
-    var full_n = 1
-    for axis in range(ndim_i):
-        var idx_off = Int(idx_offsets_raw[axis])
-        var idx_len = Int(idx_lens_raw[axis])
-        var dim = Int(dims_raw[axis])
-        if idx_off != idx_data_n or idx_len <= 0 or dim <= 0:
-            return _null_idxplan_i32()
-        idx_data_n += idx_len
-        out_n *= idx_len
-        full_n *= dim
-        if out_n <= 0 or full_n <= 0:
-            return _null_idxplan_i32()
-    if idx_data_n <= 0 or out_n <= 0 or full_n <= 0:
-        return _null_idxplan_i32()
-    if not gpu_limit_ok(idx_data_n + (3 * ndim_i), 2, 4):
-        return _null_idxplan_i32()
-
-    for axis in range(ndim_i):
-        var idx_off = Int(idx_offsets_raw[axis])
-        var idx_len = Int(idx_lens_raw[axis])
-        var dim = Int(dims_raw[axis])
-        for j in range(idx_len):
-            var idx_val = Int(idx_data_raw[idx_off + j])
-            if idx_val < 0 or idx_val >= dim:
-                return _null_idxplan_i32()
-
     try:
         var idx_data_host = ctxp[0].enqueue_create_host_buffer[DType.int32](idx_data_n)
         var idx_offsets_host = ctxp[0].enqueue_create_host_buffer[DType.int32](ndim_i)

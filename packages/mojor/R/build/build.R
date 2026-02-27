@@ -1331,6 +1331,7 @@ mojor_build <- function(
         .mojor_copy_helper_mojo(dir, "ziggurat_constants.mojo")
     }
     if (isTRUE(trans$rng_needed)) {
+        .mojor_copy_helper_mojo(dir, "abi_types.mojo")
         .mojor_copy_helper_mojo(dir, "rng_helpers.mojo")
     }
 
@@ -1351,11 +1352,13 @@ mojor_build <- function(
 
  # Copy set/match helpers
     if (isTRUE(trans$set_match_needed)) {
+        .mojor_copy_helper_mojo(dir, "abi_types.mojo")
         .mojor_copy_helper_mojo(dir, "set_match_helpers.mojo")
     }
 
  # Copy quantile helpers
     if (isTRUE(trans$quantile_needed)) {
+        .mojor_copy_helper_mojo(dir, "abi_types.mojo")
         .mojor_copy_helper_mojo(dir, "quantile_helpers.mojo")
     }
 

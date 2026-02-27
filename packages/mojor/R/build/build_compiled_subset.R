@@ -171,17 +171,20 @@
     writeLines(mojo_code, mojo_file)
 
     if (isTRUE(rng_needed)) {
+        .mojor_copy_helper_mojo_to_dir("abi_types.mojo", dir)
         .mojor_copy_helper_mojo_to_dir("rng_helpers.mojo", dir)
         .mojor_copy_helper_mojo_to_dir("ziggurat_constants.mojo", dir)
     }
 
  # expression kernels may depend on set/match helpers.
     if (isTRUE(trans$set_match_needed)) {
+        .mojor_copy_helper_mojo_to_dir("abi_types.mojo", dir)
         .mojor_copy_helper_mojo_to_dir("set_match_helpers.mojo", dir)
     }
 
  # expression kernels may depend on quantile helpers.
     if (isTRUE(trans$quantile_needed)) {
+        .mojor_copy_helper_mojo_to_dir("abi_types.mojo", dir)
         .mojor_copy_helper_mojo_to_dir("quantile_helpers.mojo", dir)
     }
 

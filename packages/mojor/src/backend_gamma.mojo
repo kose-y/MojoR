@@ -1,8 +1,6 @@
 # Gamma distribution module for MojoR
-from memory import OpaquePointer
+from abi_types import MutOpaqueAny
 from rng_helpers import _rng_fill_rgamma
-
-comptime MutOpaqueAny = OpaquePointer[mut=True, origin=MutAnyOrigin]
 
 @export("mojor_rgamma", ABI="C")
 fn mojor_rgamma(out_ptr: MutOpaqueAny, n: Int32, shape: Float64, rate: Float64, state_ptr: MutOpaqueAny) -> None:

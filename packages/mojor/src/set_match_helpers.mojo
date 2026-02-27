@@ -7,13 +7,7 @@
 # Date: 2026-02-15
 # Tier: 7.3 Set/Match Primitives
 
-# Pointer type aliases matching kernel ABI
-comptime ImmutF64Ptr = UnsafePointer[mut=False, type=Float64, origin=ImmutAnyOrigin]
-comptime ImmutF32Ptr = UnsafePointer[mut=False, type=Float32, origin=ImmutAnyOrigin]
-comptime ImmutI32Ptr = UnsafePointer[mut=False, type=Int32, origin=ImmutAnyOrigin]
-comptime MutF64Ptr = UnsafePointer[mut=True, type=Float64, origin=MutAnyOrigin]
-comptime MutF32Ptr = UnsafePointer[mut=True, type=Float32, origin=MutAnyOrigin]
-comptime MutI32Ptr = UnsafePointer[mut=True, type=Int32, origin=MutAnyOrigin]
+from abi_types import ImmutF64Ptr, ImmutF32Ptr, ImmutI32Ptr, MutF64Ptr, MutF32Ptr, MutI32Ptr
 
 @always_inline
 fn _is_nan_f64(val: Float64) -> Bool:

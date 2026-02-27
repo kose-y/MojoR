@@ -13,14 +13,7 @@
 
 from math import floor, ceil
 from memory import alloc
-
-# Pointer type aliases matching kernel ABI
-comptime ImmutF64Ptr = UnsafePointer[mut=False, type=Float64, origin=ImmutAnyOrigin]
-comptime ImmutF32Ptr = UnsafePointer[mut=False, type=Float32, origin=ImmutAnyOrigin]
-comptime ImmutI32Ptr = UnsafePointer[mut=False, type=Int32, origin=ImmutAnyOrigin]
-comptime MutF64Ptr = UnsafePointer[mut=True, type=Float64, origin=MutAnyOrigin]
-comptime MutF32Ptr = UnsafePointer[mut=True, type=Float32, origin=MutAnyOrigin]
-comptime MutI32Ptr = UnsafePointer[mut=True, type=Int32, origin=MutAnyOrigin]
+from abi_types import ImmutF64Ptr, ImmutF32Ptr, ImmutI32Ptr, MutF64Ptr, MutF32Ptr, MutI32Ptr
 
 # ============================================================================
 # Helper: Swap two elements in an array
@@ -122,17 +115,19 @@ fn _mojor_quickselect_f64(
     Returns:
         The k-th smallest element
     """
+    var left_i = left
+    var right_i = right
     while True:
-        if left == right:
-            return arr[left]
+        if left_i == right_i:
+            return arr[left_i]
         
         # Choose pivot (middle element)
-        pivot_idx = (left + right) // 2
+        pivot_idx = (left_i + right_i) // 2
         pivot_val = arr[pivot_idx]
         
         # Partition
-        i = left
-        j = right
+        i = left_i
+        j = right_i
         while i <= j:
             while arr[i] < pivot_val:
                 i += 1
@@ -145,9 +140,9 @@ fn _mojor_quickselect_f64(
         
         # Recurse on appropriate side
         if k <= j:
-            right = j
+            right_i = j
         elif k >= i:
-            left = i
+            left_i = i
         else:
             return arr[k]
 
@@ -171,17 +166,19 @@ fn _mojor_quickselect_i32(
     Returns:
         The k-th smallest element
     """
+    var left_i = left
+    var right_i = right
     while True:
-        if left == right:
-            return arr[left]
+        if left_i == right_i:
+            return arr[left_i]
         
         # Choose pivot (middle element)
-        pivot_idx = (left + right) // 2
+        pivot_idx = (left_i + right_i) // 2
         pivot_val = arr[pivot_idx]
         
         # Partition
-        i = left
-        j = right
+        i = left_i
+        j = right_i
         while i <= j:
             while arr[i] < pivot_val:
                 i += 1
@@ -194,9 +191,9 @@ fn _mojor_quickselect_i32(
         
         # Recurse on appropriate side
         if k <= j:
-            right = j
+            right_i = j
         elif k >= i:
-            left = i
+            left_i = i
         else:
             return arr[k]
 

@@ -252,6 +252,7 @@ MOJOR_TILE_MAX <- 3 # 1D, 2D, or 3D
 # =============================================================================
 
 # Source files
+MOJOR_SRC_ABI_TYPES <- "src/abi_types.mojo"
 MOJOR_SRC_BACKEND <- "src/backend.mojo"
 MOJOR_SRC_BACKEND_RNG <- "src/backend_rng.mojo"
 MOJOR_SRC_BACKEND_GAMMA <- "src/backend_gamma.mojo"

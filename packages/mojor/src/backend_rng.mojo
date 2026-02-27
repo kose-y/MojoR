@@ -1,10 +1,6 @@
 # RNG module for MojoR
-from memory import OpaquePointer, UnsafePointer
+from abi_types import MutOpaqueAny, MutF64ScalarPtr, MutU64Ptr
 from rng_helpers import _rng_fill_runif, _rng_fill_runif_range, _rng_fill_rnorm, _rng_fill_rnorm_mean_sd, _rng_state_ptr, _rng_out_f64_ptr, _random_binomial
-
-comptime MutOpaqueAny = OpaquePointer[mut=True, origin=MutAnyOrigin]
-comptime MutF64Ptr = UnsafePointer[mut=True, type=Scalar[DType.float64], origin=MutAnyOrigin]
-comptime MutU64Ptr = UnsafePointer[mut=True, type=UInt64, origin=MutAnyOrigin]
 
 
 @export("mojor_rng_seed", ABI="C")
@@ -53,7 +49,7 @@ fn mojor_rbinom(
     prob: Float64,
     state_ptr: MutOpaqueAny
 ) -> None:
-    var out: MutF64Ptr = _rng_out_f64_ptr(out_ptr)
+    var out: MutF64ScalarPtr = _rng_out_f64_ptr(out_ptr)
     var state: MutU64Ptr = _rng_state_ptr(state_ptr)
     for i in range(Int(n)):
         out[i] = Float64(_random_binomial(state, Int(size), prob))

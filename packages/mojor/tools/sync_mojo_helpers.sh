@@ -4,7 +4,7 @@ set -eu
 ROOT="$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)"
 SRC_DIR="$ROOT/src"
 DST_DIR="$ROOT/inst/mojo_helpers"
-HELPERS="debug_helpers.mojo na_helpers.mojo quantile_helpers.mojo rng_helpers.mojo set_match_helpers.mojo ziggurat_constants.mojo"
+HELPERS="abi_types.mojo debug_helpers.mojo na_helpers.mojo quantile_helpers.mojo rng_helpers.mojo set_match_helpers.mojo ziggurat_constants.mojo"
 
 mkdir -p "$DST_DIR"
 find "$DST_DIR" -maxdepth 1 -type f -name '*.mojo' -exec rm -f {} +
