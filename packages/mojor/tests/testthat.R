@@ -224,6 +224,7 @@ run_test_files_sequential <- function(package) {
   }
 
   had_failures <- FALSE
+  failed_files <- character(0)
   subprocess_files <- c(
     "test_gpu_math_route_audit.R",
     "test_indexing_comprehensive.R",
@@ -262,16 +263,22 @@ run_test_files_sequential <- function(package) {
       status <- run_test_file_subprocess(file, reporter = "summary")
       if (!identical(status, 0L)) {
         had_failures <- TRUE
+        failed_files <- c(failed_files, basename(file))
       }
     } else {
       result <- test_file(file, reporter = "summary")
       if (has_file_failures(result)) {
         had_failures <- TRUE
+        failed_files <- c(failed_files, basename(file))
       }
     }
   }
   if (isTRUE(had_failures)) {
-    stop("One or more test files reported failures.")
+    failed_files <- sort(unique(failed_files))
+    stop(sprintf(
+      "One or more test files reported failures: %s",
+      paste(failed_files, collapse = ", ")
+    ))
   }
   invisible(TRUE)
 }
