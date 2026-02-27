@@ -1,3 +1,116 @@
+.mojor_ir_sample_is_prob_null <- function(prob_node) {
+  if (is.null(prob_node)) {
+    return(TRUE)
+  }
+  if (is.list(prob_node) && identical(prob_node$kind, "var") && identical(prob_node$name, "NULL")) {
+    return(TRUE)
+  }
+  if (is.list(prob_node) && identical(prob_node$kind, "const")) {
+    val <- prob_node$value
+    if (is.character(val) && length(val) == 1 && identical(toupper(val), "NULL")) {
+      return(TRUE)
+    }
+  }
+  FALSE
+}
+
+.mojor_ir_sample_parse_prob_var <- function(prob_node, op_label, src, type_env = NULL) {
+  if (is.null(prob_node)) {
+    return(NULL)
+  }
+  if (!(is.list(prob_node) && identical(prob_node$kind, "var") && nzchar(prob_node$name))) {
+    .mojor_err(
+      paste0(op_label, "() weighted sampling currently requires prob to be a direct vector variable in this release"),
+      src,
+      "Use a direct f64[] variable for prob or set prob = NULL"
+    )
+  }
+  prob_name <- prob_node$name
+  if (!is.null(type_env)) {
+    prob_type <- type_env[[prob_name]]
+    if (!is.null(prob_type) && !(prob_type %in% c("f64[]", "f64", "unknown"))) {
+      .mojor_err(
+        paste0(op_label, "() weighted sampling requires prob to have f64[] type in this release"),
+        src,
+        paste0("Got prob type: ", prob_type)
+      )
+    }
+  }
+  len_var_map <- .mojor_state$current_len_var_map
+  const_array_vars <- .mojor_state$current_const_array_vars
+  prob_len <- .mojor_ir_emit_len_lookup(
+    prob_name,
+    len_var_map = len_var_map,
+    const_array_vars = const_array_vars,
+    default = paste0("len_", prob_name)
+  )
+  list(name = prob_name, len = prob_len)
+}
+
+.mojor_ir_sample_parse_replace_mode <- function(
+  replace_node,
+  op_label,
+  src,
+  zero_based_vars = NULL,
+  type_env = NULL,
+  loop_var = NULL
+) {
+  parse_bool_literal <- function(v) {
+    if (is.logical(v) && length(v) == 1 && !is.na(v)) {
+      return(isTRUE(v))
+    }
+    if (is.character(v) && length(v) == 1) {
+      up <- toupper(v)
+      if (up %in% c("TRUE", "FALSE")) {
+        return(identical(up, "TRUE"))
+      }
+    }
+    if (is.numeric(v) && length(v) == 1 && !is.na(v) && v %in% c(0, 1)) {
+      return(isTRUE(as.logical(v)))
+    }
+    NULL
+  }
+  fail <- function() {
+    .mojor_err(
+      paste0(op_label, "() replace must be a scalar boolean/int flag (literal or typed scalar expression) in this release"),
+      src,
+      "Use replace = TRUE/FALSE or a scalar lgl/bool/i32 variable/expression"
+    )
+  }
+  if (is.null(replace_node)) {
+    return(list(is_const = TRUE, value = FALSE, expr = NULL))
+  }
+  if (is.list(replace_node) && !is.null(replace_node$kind)) {
+    if (identical(replace_node$kind, "const")) {
+      lit <- parse_bool_literal(replace_node$value)
+      if (is.null(lit)) fail()
+      return(list(is_const = TRUE, value = lit, expr = NULL))
+    }
+    replace_expr <- .mojor_ir_expr_emit(
+      replace_node,
+      zero_based_vars,
+      type_env,
+      loop_var,
+      index_context = TRUE
+    )
+    if (is.null(replace_expr) || !nzchar(replace_expr)) {
+      fail()
+    }
+    inferred <- tryCatch(
+      if (!is.null(type_env)) .mojor_ir_infer_type(replace_node, type_env) else "unknown",
+      error = function(e) "unknown"
+    )
+    if (is.character(inferred) && length(inferred) == 1 &&
+      inferred %in% c("i32", "f64", "f32", "Int", "Int32", "Int64", "Float64", "Float32")) {
+      replace_expr <- paste0("((", replace_expr, ") != 0)")
+    }
+    return(list(is_const = FALSE, value = NA, expr = replace_expr))
+  }
+  lit <- parse_bool_literal(replace_node)
+  if (is.null(lit)) fail()
+  list(is_const = TRUE, value = lit, expr = NULL)
+}
+
 .mojor_ir_stmt_emit <- function(node, indent = "    ", zero_based_vars = NULL, out_name = NULL, na_guard = "forbid", bounds_check = FALSE, loop_var = NULL, scalar_name = NULL, type_env = NULL, unroll = NULL, schedule = NULL, bounds_guard_cache = NULL, na_guard_cache = NULL) {
  # Step 4.4: Added loop_var parameter for guard optimization
  # Step 5.1: Added type_env parameter for logical array support
@@ -2015,107 +2128,25 @@
   sample_node <- rhs_index$base
   op_label <- if (identical(sample_node$kind, "sample_int")) "sample.int" else "sample"
 
-  parse_replace_mode <- function(replace_node) {
-    parse_bool_literal <- function(v) {
-      if (is.logical(v) && length(v) == 1 && !is.na(v)) {
-        return(isTRUE(v))
-      }
-      if (is.character(v) && length(v) == 1) {
-        up <- toupper(v)
-        if (up %in% c("TRUE", "FALSE")) {
-          return(identical(up, "TRUE"))
-        }
-      }
-      if (is.numeric(v) && length(v) == 1 && !is.na(v) && v %in% c(0, 1)) {
-        return(isTRUE(as.logical(v)))
-      }
-      NULL
-    }
-    fail <- function() {
-      .mojor_err(
-        paste0(op_label, "() replace must be a scalar boolean/int flag (literal or typed scalar expression) in this release"),
-        sample_node$src,
-        "Use replace = TRUE/FALSE or a scalar lgl/bool/i32 variable/expression"
-      )
-    }
-    if (is.null(replace_node)) {
-      return(list(is_const = TRUE, value = FALSE, expr = NULL))
-    }
-    if (is.list(replace_node) && !is.null(replace_node$kind)) {
-      if (identical(replace_node$kind, "const")) {
-        lit <- parse_bool_literal(replace_node$value)
-        if (is.null(lit)) fail()
-        return(list(is_const = TRUE, value = lit, expr = NULL))
-      }
-      replace_expr <- .mojor_ir_expr_emit(replace_node, zero_based_vars, type_env, loop_var, index_context = TRUE)
-      if (is.null(replace_expr) || !nzchar(replace_expr)) {
-        fail()
-      }
-      inferred <- tryCatch(
-        if (!is.null(type_env)) .mojor_ir_infer_type(replace_node, type_env) else "unknown",
-        error = function(e) "unknown"
-      )
-      if (is.character(inferred) && length(inferred) == 1 &&
-        inferred %in% c("i32", "f64", "f32", "Int", "Int32", "Int64", "Float64", "Float32")) {
-        replace_expr <- paste0("((", replace_expr, ") != 0)")
-      }
-      return(list(is_const = FALSE, value = NA, expr = replace_expr))
-    }
-    lit <- parse_bool_literal(replace_node)
-    if (is.null(lit)) fail()
-    list(is_const = TRUE, value = lit, expr = NULL)
-  }
-  is_prob_null <- function(prob_node) {
-    if (is.null(prob_node)) {
-      return(TRUE)
-    }
-    if (is.list(prob_node) && identical(prob_node$kind, "var") && identical(prob_node$name, "NULL")) {
-      return(TRUE)
-    }
-    if (is.list(prob_node) && identical(prob_node$kind, "const")) {
-      val <- prob_node$value
-      if (is.character(val) && length(val) == 1 && identical(toupper(val), "NULL")) {
-        return(TRUE)
-      }
-    }
-    FALSE
-  }
-  parse_prob_var <- function(prob_node) {
-    if (is.null(prob_node)) {
-      return(NULL)
-    }
-    if (!(is.list(prob_node) && identical(prob_node$kind, "var") && nzchar(prob_node$name))) {
-      .mojor_err(
-        paste0(op_label, "() weighted sampling currently requires prob to be a direct vector variable in this release"),
-        sample_node$src,
-        "Use a direct f64[] variable for prob or set prob = NULL"
-      )
-    }
-    prob_name <- prob_node$name
-    if (!is.null(type_env)) {
-      prob_type <- type_env[[prob_name]]
-      if (!is.null(prob_type) && !(prob_type %in% c("f64[]", "f64", "unknown"))) {
-        .mojor_err(
-          paste0(op_label, "() weighted sampling requires prob to have f64[] type in this release"),
-          sample_node$src,
-          paste0("Got prob type: ", prob_type)
-        )
-      }
-    }
-    len_var_map <- .mojor_state$current_len_var_map
-    const_array_vars <- .mojor_state$current_const_array_vars
-    prob_len <- .mojor_ir_emit_len_lookup(
-      prob_name,
-      len_var_map = len_var_map,
-      const_array_vars = const_array_vars,
-      default = paste0("len_", prob_name)
-    )
-    list(name = prob_name, len = prob_len)
-  }
-
-  replace_mode <- parse_replace_mode(sample_node$replace)
+  replace_mode <- .mojor_ir_sample_parse_replace_mode(
+    sample_node$replace,
+    op_label,
+    sample_node$src,
+    zero_based_vars = zero_based_vars,
+    type_env = type_env,
+    loop_var = loop_var
+  )
   replace <- if (isTRUE(replace_mode$is_const)) isTRUE(replace_mode$value) else FALSE
-  prob_info <- if (!is_prob_null(sample_node$prob)) parse_prob_var(sample_node$prob) else NULL
+  prob_info <- if (!.mojor_ir_sample_is_prob_null(sample_node$prob)) {
+    .mojor_ir_sample_parse_prob_var(
+      sample_node$prob,
+      op_label = op_label,
+      src = sample_node$src,
+      type_env = type_env
+    )
+  } else {
+    NULL
+  }
   size_str <- .mojor_ir_expr_emit(sample_node$size, zero_based_vars, type_env, loop_var, index_context = TRUE)
   if (is.null(size_str) || !nzchar(size_str)) {
     return(NULL)
@@ -2355,107 +2386,26 @@
   n <- node$n
   size <- node$size
   replace <- node$replace
-  is_prob_null <- function(prob_node) {
-    if (is.null(prob_node)) {
-      return(TRUE)
-    }
-    if (is.list(prob_node) && identical(prob_node$kind, "var") && identical(prob_node$name, "NULL")) {
-      return(TRUE)
-    }
-    if (is.list(prob_node) && identical(prob_node$kind, "const")) {
-      val <- prob_node$value
-      if (is.character(val) && length(val) == 1 && identical(toupper(val), "NULL")) {
-        return(TRUE)
-      }
-    }
-    FALSE
-  }
-  parse_prob_var <- function(prob_node, op_label) {
-    if (is.null(prob_node)) {
-      return(NULL)
-    }
-    if (!(is.list(prob_node) && identical(prob_node$kind, "var") && nzchar(prob_node$name))) {
-      .mojor_err(
-        paste0(op_label, "() weighted sampling currently requires prob to be a direct vector variable in this release"),
-        node$src,
-        "Use a direct f64[] variable for prob or set prob = NULL"
-      )
-    }
-    prob_name <- prob_node$name
-    if (!is.null(type_env)) {
-      prob_type <- type_env[[prob_name]]
-      if (!is.null(prob_type) && !(prob_type %in% c("f64[]", "f64", "unknown"))) {
-        .mojor_err(
-          paste0(op_label, "() weighted sampling requires prob to have f64[] type in this release"),
-          node$src,
-          paste0("Got prob type: ", prob_type)
-        )
-      }
-    }
-    len_var_map <- .mojor_state$current_len_var_map
-    const_array_vars <- .mojor_state$current_const_array_vars
-    prob_len <- .mojor_ir_emit_len_lookup(
-      prob_name,
-      len_var_map = len_var_map,
-      const_array_vars = const_array_vars,
-      default = paste0("len_", prob_name)
+  prob_info <- if (!.mojor_ir_sample_is_prob_null(node$prob)) {
+    .mojor_ir_sample_parse_prob_var(
+      node$prob,
+      op_label = "sample.int",
+      src = node$src,
+      type_env = type_env
     )
-    list(name = prob_name, len = prob_len)
+  } else {
+    NULL
   }
-  prob_info <- if (!is_prob_null(node$prob)) parse_prob_var(node$prob, "sample.int") else NULL
   out_name <- if (!is.null(out_name) && nzchar(out_name)) out_name else "out"
 
-  parse_replace_mode <- function(replace_node, op_label) {
-    parse_bool_literal <- function(v) {
-      if (is.logical(v) && length(v) == 1 && !is.na(v)) {
-        return(isTRUE(v))
-      }
-      if (is.numeric(v) && length(v) == 1 && !is.na(v) && v %in% c(0, 1)) {
-        return(isTRUE(as.logical(v)))
-      }
-      if (is.character(v) && length(v) == 1) {
-        up <- toupper(v)
-        if (up %in% c("TRUE", "FALSE")) {
-          return(identical(up, "TRUE"))
-        }
-      }
-      NULL
-    }
-    fail <- function() {
-      .mojor_err(
-        paste0(op_label, "() replace must be a scalar boolean/int flag (literal or typed scalar expression) in this release"),
-        node$src,
-        "Use replace = TRUE/FALSE or a scalar lgl/bool/i32 variable/expression"
-      )
-    }
-    if (is.null(replace_node)) {
-      return(list(is_const = TRUE, value = FALSE, expr = NULL))
-    }
-    if (is.list(replace_node) && !is.null(replace_node$kind)) {
-      if (identical(replace_node$kind, "const")) {
-        lit <- parse_bool_literal(replace_node$value)
-        if (is.null(lit)) fail()
-        return(list(is_const = TRUE, value = lit, expr = NULL))
-      }
-      replace_expr <- .mojor_ir_expr_emit(replace_node, zero_based_vars, type_env, loop_var, index_context = TRUE)
-      if (is.null(replace_expr) || !nzchar(replace_expr)) {
-        fail()
-      }
-      inferred <- tryCatch(
-        if (!is.null(type_env)) .mojor_ir_infer_type(replace_node, type_env) else "unknown",
-        error = function(e) "unknown"
-      )
-      if (is.character(inferred) && length(inferred) == 1 &&
-        inferred %in% c("i32", "f64", "f32", "Int", "Int32", "Int64", "Float64", "Float32")) {
-        replace_expr <- paste0("((", replace_expr, ") != 0)")
-      }
-      return(list(is_const = FALSE, value = NA, expr = replace_expr))
-    }
-    lit <- parse_bool_literal(replace_node)
-    if (is.null(lit)) fail()
-    list(is_const = TRUE, value = lit, expr = NULL)
-  }
-  replace_mode <- parse_replace_mode(replace, "sample.int")
+  replace_mode <- .mojor_ir_sample_parse_replace_mode(
+    replace,
+    op_label = "sample.int",
+    src = node$src,
+    zero_based_vars = zero_based_vars,
+    type_env = type_env,
+    loop_var = loop_var
+  )
 
   .mojor_state$needs_mojo_random <- TRUE
 
@@ -2617,107 +2567,26 @@
   x <- node$x
   size <- node$size
   replace <- node$replace
-  is_prob_null <- function(prob_node) {
-    if (is.null(prob_node)) {
-      return(TRUE)
-    }
-    if (is.list(prob_node) && identical(prob_node$kind, "var") && identical(prob_node$name, "NULL")) {
-      return(TRUE)
-    }
-    if (is.list(prob_node) && identical(prob_node$kind, "const")) {
-      val <- prob_node$value
-      if (is.character(val) && length(val) == 1 && identical(toupper(val), "NULL")) {
-        return(TRUE)
-      }
-    }
-    FALSE
-  }
-  parse_prob_var <- function(prob_node) {
-    if (is.null(prob_node)) {
-      return(NULL)
-    }
-    if (!(is.list(prob_node) && identical(prob_node$kind, "var") && nzchar(prob_node$name))) {
-      .mojor_err(
-        "sample() weighted sampling currently requires prob to be a direct vector variable in this release",
-        node$src,
-        "Use a direct f64[] variable for prob or set prob = NULL"
-      )
-    }
-    prob_name <- prob_node$name
-    if (!is.null(type_env)) {
-      prob_type <- type_env[[prob_name]]
-      if (!is.null(prob_type) && !(prob_type %in% c("f64[]", "f64", "unknown"))) {
-        .mojor_err(
-          "sample() weighted sampling requires prob to have f64[] type in this release",
-          node$src,
-          paste0("Got prob type: ", prob_type)
-        )
-      }
-    }
-    len_var_map <- .mojor_state$current_len_var_map
-    const_array_vars <- .mojor_state$current_const_array_vars
-    prob_len <- .mojor_ir_emit_len_lookup(
-      prob_name,
-      len_var_map = len_var_map,
-      const_array_vars = const_array_vars,
-      default = paste0("len_", prob_name)
+  prob_info <- if (!.mojor_ir_sample_is_prob_null(node$prob)) {
+    .mojor_ir_sample_parse_prob_var(
+      node$prob,
+      op_label = "sample",
+      src = node$src,
+      type_env = type_env
     )
-    list(name = prob_name, len = prob_len)
+  } else {
+    NULL
   }
-  prob_info <- if (!is_prob_null(node$prob)) parse_prob_var(node$prob) else NULL
   out_name <- if (!is.null(out_name) && nzchar(out_name)) out_name else "out"
 
-  parse_replace_mode <- function(replace_node, op_label) {
-    parse_bool_literal <- function(v) {
-      if (is.logical(v) && length(v) == 1 && !is.na(v)) {
-        return(isTRUE(v))
-      }
-      if (is.numeric(v) && length(v) == 1 && !is.na(v) && v %in% c(0, 1)) {
-        return(isTRUE(as.logical(v)))
-      }
-      if (is.character(v) && length(v) == 1) {
-        up <- toupper(v)
-        if (up %in% c("TRUE", "FALSE")) {
-          return(identical(up, "TRUE"))
-        }
-      }
-      NULL
-    }
-    fail <- function() {
-      .mojor_err(
-        paste0(op_label, "() replace must be a scalar boolean/int flag (literal or typed scalar expression) in this release"),
-        node$src,
-        "Use replace = TRUE/FALSE or a scalar lgl/bool/i32 variable/expression"
-      )
-    }
-    if (is.null(replace_node)) {
-      return(list(is_const = TRUE, value = FALSE, expr = NULL))
-    }
-    if (is.list(replace_node) && !is.null(replace_node$kind)) {
-      if (identical(replace_node$kind, "const")) {
-        lit <- parse_bool_literal(replace_node$value)
-        if (is.null(lit)) fail()
-        return(list(is_const = TRUE, value = lit, expr = NULL))
-      }
-      replace_expr <- .mojor_ir_expr_emit(replace_node, zero_based_vars, type_env, loop_var, index_context = TRUE)
-      if (is.null(replace_expr) || !nzchar(replace_expr)) {
-        fail()
-      }
-      inferred <- tryCatch(
-        if (!is.null(type_env)) .mojor_ir_infer_type(replace_node, type_env) else "unknown",
-        error = function(e) "unknown"
-      )
-      if (is.character(inferred) && length(inferred) == 1 &&
-        inferred %in% c("i32", "f64", "f32", "Int", "Int32", "Int64", "Float64", "Float32")) {
-        replace_expr <- paste0("((", replace_expr, ") != 0)")
-      }
-      return(list(is_const = FALSE, value = NA, expr = replace_expr))
-    }
-    lit <- parse_bool_literal(replace_node)
-    if (is.null(lit)) fail()
-    list(is_const = TRUE, value = lit, expr = NULL)
-  }
-  replace_mode <- parse_replace_mode(replace, "sample")
+  replace_mode <- .mojor_ir_sample_parse_replace_mode(
+    replace,
+    op_label = "sample",
+    src = node$src,
+    zero_based_vars = zero_based_vars,
+    type_env = type_env,
+    loop_var = loop_var
+  )
 
  # For now, only support direct variable references
   if (x$kind != "var") {

@@ -6075,17 +6075,6 @@
             length(base) ==
                 2 &&
             is.name(base[[2]])) {
-            parse_dim_idx_literal <- function(node) {
-                out <- NA_integer_
-                if (is.integer(node) && length(node) == 1) {
-                    out <- as.integer(node)
-                } else if (is.numeric(node) &&
-                    length(node) == 1 &&
-                    abs(node - as.integer(node)) < 1e-12) {
-                    out <- as.integer(node)
-                }
-                out
-            }
             raw_name <- as.character(base[[2]])
             arr_name <- resolve_array_alias(raw_name)
             name <- if (!is.null(arr_name))
@@ -6095,7 +6084,7 @@
             spec <- arg_specs[[name]]
             if (!.mojor_is_array(spec))
                 stop("mojor_transpile: dim() dim arg must be an array")
-            dim_idx <- parse_dim_idx_literal(idx)
+            dim_idx <- .mojor_parse_dim_idx_literal(idx)
             if (!is.na(dim_idx) && dim_idx < 1L)
                 stop("mojor_transpile: dim() index must be a positive integer literal or supported scalar expression")
             idx_expr_c <- NULL
@@ -6405,24 +6394,13 @@
               as.character(base[[1]]) == "dim" &&
               length(base) == 2 &&
               is.name(base[[2]])) {
-                parse_dim_idx_literal <- function(node) {
-                  out <- NA_integer_
-                  if (is.integer(node) && length(node) == 1) {
-                    out <- as.integer(node)
-                  } else if (is.numeric(node) &&
-                    length(node) == 1 &&
-                    abs(node - as.integer(node)) < 1e-12) {
-                    out <- as.integer(node)
-                  }
-                  out
-                }
                 name <- resolve_array_alias(as.character(base[[2]]))
                 if (is.null(name))
                   stop("mojor_transpile: dim() expression must use a function argument")
                 spec <- arg_specs[[name]]
                 if (!.mojor_is_array(spec))
                   stop("mojor_transpile: dim() expression requires an array argument")
-                dim_idx <- parse_dim_idx_literal(idx)
+                dim_idx <- .mojor_parse_dim_idx_literal(idx)
                 if (!is.na(dim_idx) && dim_idx < 1L)
                   stop("mojor_transpile: dim() index must be a positive integer literal or supported scalar expression")
                 if (.mojor_is_matrix(spec)) {

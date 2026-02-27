@@ -51,6 +51,18 @@
   is.character(spec) && length(spec) == 1 && !is.na(spec) && grepl("\\[", spec)
 }
 
+.mojor_parse_dim_idx_literal <- function(node) {
+  out <- NA_integer_
+  if (is.integer(node) && length(node) == 1) {
+    out <- as.integer(node)
+  } else if (is.numeric(node) &&
+    length(node) == 1 &&
+    abs(node - as.integer(node)) < 1e-12) {
+    out <- as.integer(node)
+  }
+  out
+}
+
 .mojor_resolve_array_source_name <- function(name, args, arg_specs, alias_map = NULL) {
   if (!is.character(name) || length(name) != 1 || is.na(name) || !nzchar(name)) {
     return(NULL)
