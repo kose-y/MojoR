@@ -83,6 +83,32 @@
     invisible(TRUE)
 }
 
+.mojor_rng_c_bridge_state_lines <- function() {
+    c(
+        "static uint64_t __mojor_rng_state[4] = {0, 0, 0, 0};",
+        "static int __mojor_rng_seeded = 0;",
+        "static uint64_t __mojor_splitmix64(uint64_t* x) {",
+        "  uint64_t z = (*x += 0x9e3779b97f4a7c15ULL);",
+        "  z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9ULL;",
+        "  z = (z ^ (z >> 27)) * 0x94d049bb133111ebULL;",
+        "  return z ^ (z >> 31);",
+        "}",
+        "static void __mojor_rng_seed_state(uint64_t seed) {",
+        "  uint64_t x = seed;",
+        "  __mojor_rng_state[0] = __mojor_splitmix64(&x);",
+        "  __mojor_rng_state[1] = __mojor_splitmix64(&x);",
+        "  __mojor_rng_state[2] = __mojor_splitmix64(&x);",
+        "  __mojor_rng_state[3] = __mojor_splitmix64(&x);",
+        "  __mojor_rng_seeded = 1;",
+        "}",
+        "static void __mojor_rng_ensure_seeded(void) {",
+        "  if (!__mojor_rng_seeded) {",
+        "    __mojor_rng_seed_state(0x106689d45497fdb5ULL);",
+        "  }",
+        "}"
+    )
+}
+
 .mojor_build_expression_kernel <- function(
     trans, fn, name, build_dir, load, verbose, cache, cache_dir, fast_math,
     ...
