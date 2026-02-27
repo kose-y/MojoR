@@ -36,6 +36,42 @@
     NA_integer_
 }
 
+.mojor_ir_expr_used_arg_indices <- function(parts, nms, specs) {
+    if (is.null(specs) || length(specs) == 0L) {
+        return(integer(0))
+    }
+    if (!is.list(specs)) {
+        specs <- as.list(specs)
+    }
+    idx <- integer(0)
+    for (spec in specs) {
+        if (is.null(spec)) {
+            next
+        }
+        if (is.numeric(spec) &&
+            length(spec) == 1L &&
+            !is.na(spec)) {
+            idx <- c(idx, as.integer(spec))
+            next
+        }
+        if (is.list(spec) &&
+            !is.null(spec$name) &&
+            is.character(spec$name) &&
+            length(spec$name) == 1L &&
+            nzchar(spec$name)) {
+            pos <- if (!is.null(spec$pos) &&
+                length(spec$pos) == 1L &&
+                !is.na(spec$pos)) as.integer(spec$pos) else NULL
+            idx_i <- .mojor_ir_expr_get_call_arg_idx(parts, nms, spec$name, pos)
+            if (!is.na(idx_i)) {
+                idx <- c(idx, idx_i)
+            }
+        }
+    }
+    idx <- unique(idx)
+    idx[idx >= 1L & idx <= length(parts)]
+}
+
 .mojor_ir_parse_bool_scalar_or_var <- function(arg_expr, default = NULL) {
     if (is.null(arg_expr)) {
         return(default)
@@ -148,29 +184,9 @@
         return(NULL)
     }
 
-    find_call_arg_idx <- function(parts, nms, nm, pos = NULL) {
-        if (!is.null(nms) &&
-            nm %in% nms) {
-            return(which(nms == nm)[1])
-        }
-        if (!is.null(pos) &&
-            length(parts) >=
-                pos) {
-            pos_name <- if (is.null(nms))
-                "" else nms[[pos]]
-            if (is.null(pos_name) ||
-                is.na(pos_name) ||
-                pos_name == "") {
-                return(pos)
-            }
-        }
-        NA_integer_
-    }
-
-    x_idx <- find_call_arg_idx(parts, nms, "x", 1)
-    na_rm_idx <- find_call_arg_idx(parts, nms, "na.rm", 2)
-    used_idx <- unique(c(x_idx, na_rm_idx))
-    used_idx <- used_idx[!is.na(used_idx)]
+    x_idx <- .mojor_ir_expr_get_call_arg_idx(parts, nms, "x", 1)
+    na_rm_idx <- .mojor_ir_expr_get_call_arg_idx(parts, nms, "na.rm", 2)
+    used_idx <- .mojor_ir_expr_used_arg_indices(parts, nms, list(x_idx, na_rm_idx))
     if (length(parts) !=
         length(used_idx)) {
         return(NULL)
@@ -220,29 +236,9 @@
     parts <- as.list(call_expr)[-1]
     nms <- names(parts)
 
-    find_call_arg_idx <- function(parts, nms, nm, pos = NULL) {
-        if (!is.null(nms) &&
-            nm %in% nms) {
-            return(which(nms == nm)[1])
-        }
-        if (!is.null(pos) &&
-            length(parts) >=
-                pos) {
-            pos_name <- if (is.null(nms))
-                "" else nms[[pos]]
-            if (is.null(pos_name) ||
-                is.na(pos_name) ||
-                pos_name == "") {
-                return(pos)
-            }
-        }
-        NA_integer_
-    }
-
-    x_idx <- find_call_arg_idx(parts, nms, "x", 1)
-    na_rm_idx <- find_call_arg_idx(parts, nms, "na.rm", 2)
-    used_idx <- unique(c(x_idx, na_rm_idx))
-    used_idx <- used_idx[!is.na(used_idx)]
+    x_idx <- .mojor_ir_expr_get_call_arg_idx(parts, nms, "x", 1)
+    na_rm_idx <- .mojor_ir_expr_get_call_arg_idx(parts, nms, "na.rm", 2)
+    used_idx <- .mojor_ir_expr_used_arg_indices(parts, nms, list(x_idx, na_rm_idx))
     if (length(parts) !=
         length(used_idx)) {
         return(NULL)
@@ -830,22 +826,7 @@
         parts <- as.list(expr)[-1]
         nms <- names(parts)
 
- # Helper to get argument by name or position
-        get_arg <- function(nm, pos) {
-            if (!is.null(nms) &&
-                nm %in% nms) {
-                return(parts[[which(nms == nm)[1]]])
-            }
-            if (length(parts) >=
-                pos && (is.null(nms) ||
-                is.null(nms[[pos]]) ||
-                nms[[pos]] == "")) {
-                return(parts[[pos]])
-            }
-            NULL
-        }
-
-        x_arg <- get_arg("x", 1)
+        x_arg <- .mojor_ir_expr_get_call_arg(parts, nms, "x", 1)
         if (is.null(x_arg)) {
             return(NULL)
         }
@@ -855,19 +836,19 @@
         }
 
         times_ir <- NULL
-        times_arg <- get_arg("times", 2)
+        times_arg <- .mojor_ir_expr_get_call_arg(parts, nms, "times", 2)
         if (!is.null(times_arg)) {
             times_ir <- .mojor_ir_expr_build(times_arg)
         }
 
         each_ir <- NULL
-        each_arg <- get_arg("each", 4)
+        each_arg <- .mojor_ir_expr_get_call_arg(parts, nms, "each", 4)
         if (!is.null(each_arg)) {
             each_ir <- .mojor_ir_expr_build(each_arg)
         }
 
         length_out_ir <- NULL
-        length_out_arg <- get_arg("length.out", 3)
+        length_out_arg <- .mojor_ir_expr_get_call_arg(parts, nms, "length.out", 3)
         if (!is.null(length_out_arg)) {
             length_out_ir <- .mojor_ir_expr_build(length_out_arg)
         }
@@ -880,21 +861,8 @@
  # rep_len(x, length.out)
         parts <- as.list(expr)[-1]
         nms <- names(parts)
-        get_arg <- function(nm, pos) {
-            if (!is.null(nms) &&
-                nm %in% nms) {
-                return(parts[[which(nms == nm)[1]]])
-            }
-            if (length(parts) >=
-                pos && (is.null(nms) ||
-                is.null(nms[[pos]]) ||
-                nms[[pos]] == "")) {
-                return(parts[[pos]])
-            }
-            NULL
-        }
-        x_arg <- get_arg("x", 1)
-        len_arg <- get_arg("length.out", 2)
+        x_arg <- .mojor_ir_expr_get_call_arg(parts, nms, "x", 1)
+        len_arg <- .mojor_ir_expr_get_call_arg(parts, nms, "length.out", 2)
         if (is.null(x_arg) ||
             is.null(len_arg)) {
             return(NULL)
@@ -913,21 +881,8 @@
  # rep.int(x, times) - same as rep(x, times=)
         parts <- as.list(expr)[-1]
         nms <- names(parts)
-        get_arg <- function(nm, pos) {
-            if (!is.null(nms) &&
-                nm %in% nms) {
-                return(parts[[which(nms == nm)[1]]])
-            }
-            if (length(parts) >=
-                pos && (is.null(nms) ||
-                is.null(nms[[pos]]) ||
-                nms[[pos]] == "")) {
-                return(parts[[pos]])
-            }
-            NULL
-        }
-        x_arg <- get_arg("x", 1)
-        times_arg <- get_arg("times", 2)
+        x_arg <- .mojor_ir_expr_get_call_arg(parts, nms, "x", 1)
+        times_arg <- .mojor_ir_expr_get_call_arg(parts, nms, "times", 2)
         if (is.null(x_arg) ||
             is.null(times_arg)) {
             return(NULL)
@@ -976,22 +931,9 @@
             2) {
         parts <- as.list(expr)[-1]
         nms <- names(parts)
-        get_arg <- function(nm, pos) {
-            if (!is.null(nms) &&
-                nm %in% nms) {
-                return(parts[[which(nms == nm)[1]]])
-            }
-            if (length(parts) >=
-                pos && (is.null(nms) ||
-                is.null(nms[[pos]]) ||
-                nms[[pos]] == "")) {
-                return(parts[[pos]])
-            }
-            NULL
-        }
 
  # Handle along.with: convert to length.out = length(array)
-        along_arg <- get_arg("along.with", 4)
+        along_arg <- .mojor_ir_expr_get_call_arg(parts, nms, "along.with", 4)
         if (!is.null(along_arg)) {
  # along.with: use length of the specified array
             if (is.name(along_arg)) {
@@ -1010,7 +952,7 @@
         }
 
         from_ir <- NULL
-        from_arg <- get_arg("from", 1)
+        from_arg <- .mojor_ir_expr_get_call_arg(parts, nms, "from", 1)
         if (!is.null(from_arg)) {
             from_ir <- .mojor_ir_expr_build(from_arg)
         } else {
@@ -1018,13 +960,13 @@
         }
 
         to_ir <- NULL
-        to_arg <- get_arg("to", 2)
+        to_arg <- .mojor_ir_expr_get_call_arg(parts, nms, "to", 2)
         if (!is.null(to_arg)) {
             to_ir <- .mojor_ir_expr_build(to_arg)
         }
 
         length_out_ir <- NULL
-        len_arg <- get_arg("length.out", 3)
+        len_arg <- .mojor_ir_expr_get_call_arg(parts, nms, "length.out", 3)
         if (!is.null(len_arg)) {
             length_out_ir <- .mojor_ir_expr_build(len_arg)
         }
@@ -1045,22 +987,9 @@
             2) {
         parts <- as.list(expr)[-1]
         nms <- names(parts)
-        get_arg <- function(nm, pos) {
-            if (!is.null(nms) &&
-                nm %in% nms) {
-                return(parts[[which(nms == nm)[1]]])
-            }
-            if (length(parts) >=
-                pos && (is.null(nms) ||
-                is.null(nms[[pos]]) ||
-                nms[[pos]] == "")) {
-                return(parts[[pos]])
-            }
-            NULL
-        }
 
  # Handle along.with: convert to length.out = length(array)
-        along_arg <- get_arg("along.with", 4)
+        along_arg <- .mojor_ir_expr_get_call_arg(parts, nms, "along.with", 4)
         if (!is.null(along_arg)) {
  # along.with: use length of the specified array
             if (is.name(along_arg)) {
@@ -1315,29 +1244,9 @@
             return(NULL)
         }
 
-        find_call_arg_idx <- function(parts, nms, nm, pos = NULL) {
-            if (!is.null(nms) &&
-                nm %in% nms) {
-                return(which(nms == nm)[1])
-            }
-            if (!is.null(pos) &&
-                length(parts) >=
-                  pos) {
-                pos_name <- if (is.null(nms))
-                  "" else nms[[pos]]
-                if (is.null(pos_name) ||
-                  is.na(pos_name) ||
-                  pos_name == "") {
-                  return(pos)
-                }
-            }
-            NA_integer_
-        }
-
-        x_idx <- find_call_arg_idx(parts, nms, "x", 1)
-        na_rm_idx <- find_call_arg_idx(parts, nms, "na.rm", 2)
-        used_idx <- unique(c(x_idx, na_rm_idx))
-        used_idx <- used_idx[!is.na(used_idx)]
+        x_idx <- .mojor_ir_expr_get_call_arg_idx(parts, nms, "x", 1)
+        na_rm_idx <- .mojor_ir_expr_get_call_arg_idx(parts, nms, "na.rm", 2)
+        used_idx <- .mojor_ir_expr_used_arg_indices(parts, nms, list(x_idx, na_rm_idx))
         if (length(parts) !=
             length(used_idx)) {
             return(NULL)
@@ -1393,29 +1302,9 @@
             return(NULL)
         }
 
-        find_call_arg_idx <- function(parts, nms, nm, pos = NULL) {
-            if (!is.null(nms) &&
-                nm %in% nms) {
-                return(which(nms == nm)[1])
-            }
-            if (!is.null(pos) &&
-                length(parts) >=
-                  pos) {
-                pos_name <- if (is.null(nms))
-                  "" else nms[[pos]]
-                if (is.null(pos_name) ||
-                  is.na(pos_name) ||
-                  pos_name == "") {
-                  return(pos)
-                }
-            }
-            NA_integer_
-        }
-
-        x_idx <- find_call_arg_idx(parts, nms, "x", 1)
-        na_rm_idx <- find_call_arg_idx(parts, nms, "na.rm", 2)
-        used_idx <- unique(c(x_idx, na_rm_idx))
-        used_idx <- used_idx[!is.na(used_idx)]
+        x_idx <- .mojor_ir_expr_get_call_arg_idx(parts, nms, "x", 1)
+        na_rm_idx <- .mojor_ir_expr_get_call_arg_idx(parts, nms, "na.rm", 2)
+        used_idx <- .mojor_ir_expr_used_arg_indices(parts, nms, list(x_idx, na_rm_idx))
         if (length(parts) !=
             length(used_idx)) {
             return(NULL)
@@ -1470,29 +1359,9 @@
             return(NULL)
         }
 
-        find_call_arg_idx <- function(parts, nms, nm, pos = NULL) {
-            if (!is.null(nms) &&
-                nm %in% nms) {
-                return(which(nms == nm)[1])
-            }
-            if (!is.null(pos) &&
-                length(parts) >=
-                  pos) {
-                pos_name <- if (is.null(nms))
-                  "" else nms[[pos]]
-                if (is.null(pos_name) ||
-                  is.na(pos_name) ||
-                  pos_name == "") {
-                  return(pos)
-                }
-            }
-            NA_integer_
-        }
-
-        x_idx <- find_call_arg_idx(parts, nms, "x", 1)
-        na_rm_idx <- find_call_arg_idx(parts, nms, "na.rm", 2)
-        used_idx <- unique(c(x_idx, na_rm_idx))
-        used_idx <- used_idx[!is.na(used_idx)]
+        x_idx <- .mojor_ir_expr_get_call_arg_idx(parts, nms, "x", 1)
+        na_rm_idx <- .mojor_ir_expr_get_call_arg_idx(parts, nms, "na.rm", 2)
+        used_idx <- .mojor_ir_expr_used_arg_indices(parts, nms, list(x_idx, na_rm_idx))
         if (length(parts) !=
             length(used_idx)) {
             return(NULL)
@@ -1530,25 +1399,6 @@
         parts <- as.list(expr)[-1]
         nms <- names(parts)
 
-        find_call_arg_idx <- function(parts, nms, nm, pos = NULL) {
-            if (!is.null(nms) &&
-                nm %in% nms) {
-                return(which(nms == nm)[1])
-            }
-            if (!is.null(pos) &&
-                length(parts) >=
-                  pos) {
-                pos_name <- if (is.null(nms))
-                  "" else nms[[pos]]
-                if (is.null(pos_name) ||
-                  is.na(pos_name) ||
-                  pos_name == "") {
-                  return(pos)
-                }
-            }
-            NA_integer_
-        }
-
         x_arg <- .mojor_ir_expr_get_call_arg(parts, nms, "X", 1)
         if (is.null(x_arg))
             x_arg <- .mojor_ir_expr_get_call_arg(parts, nms, "x", 1)
@@ -1565,18 +1415,17 @@
             return(NULL)
         }
 
-        x_idx <- find_call_arg_idx(parts, nms, "X", 1)
+        x_idx <- .mojor_ir_expr_get_call_arg_idx(parts, nms, "X", 1)
         if (is.na(x_idx))
-            x_idx <- find_call_arg_idx(parts, nms, "x", 1)
-        margin_idx <- find_call_arg_idx(parts, nms, "MARGIN", 2)
+            x_idx <- .mojor_ir_expr_get_call_arg_idx(parts, nms, "x", 1)
+        margin_idx <- .mojor_ir_expr_get_call_arg_idx(parts, nms, "MARGIN", 2)
         if (is.na(margin_idx))
-            margin_idx <- find_call_arg_idx(parts, nms, "margin", 2)
-        fun_idx <- find_call_arg_idx(parts, nms, "FUN", 3)
+            margin_idx <- .mojor_ir_expr_get_call_arg_idx(parts, nms, "margin", 2)
+        fun_idx <- .mojor_ir_expr_get_call_arg_idx(parts, nms, "FUN", 3)
         if (is.na(fun_idx))
-            fun_idx <- find_call_arg_idx(parts, nms, "fun", 3)
-        na_rm_idx <- find_call_arg_idx(parts, nms, "na.rm", 4)
-        used_idx <- unique(c(x_idx, margin_idx, fun_idx, na_rm_idx))
-        used_idx <- used_idx[!is.na(used_idx)]
+            fun_idx <- .mojor_ir_expr_get_call_arg_idx(parts, nms, "fun", 3)
+        na_rm_idx <- .mojor_ir_expr_get_call_arg_idx(parts, nms, "na.rm", 4)
+        used_idx <- .mojor_ir_expr_used_arg_indices(parts, nms, list(x_idx, margin_idx, fun_idx, na_rm_idx))
         if (length(parts) !=
             length(used_idx)) {
             return(NULL)
@@ -1882,24 +1731,10 @@
         2) {
         parts <- as.list(expr)[-1]
         nms <- names(parts)
-        get_arg <- function(nm, pos) {
-            if (!is.null(nms) &&
-                nm %in% nms) {
-                return(parts[[which(nms == nm)[1]]])
-            }
-            if (length(parts) >=
-                pos && (is.null(nms) ||
-                is.null(nms[[pos]]) ||
-                nms[[pos]] == "")) {
-                return(parts[[pos]])
-            }
-            NULL
-        }
-
-        x_arg <- get_arg("x", 1)
-        probs_arg <- get_arg("probs", 2)
-        na_rm_arg <- get_arg("na.rm", 3)
-        type_arg <- get_arg("type", 4)
+        x_arg <- .mojor_ir_expr_get_call_arg(parts, nms, "x", 1)
+        probs_arg <- .mojor_ir_expr_get_call_arg(parts, nms, "probs", 2)
+        na_rm_arg <- .mojor_ir_expr_get_call_arg(parts, nms, "na.rm", 3)
+        type_arg <- .mojor_ir_expr_get_call_arg(parts, nms, "type", 4)
 
         x_ir <- .mojor_ir_expr_build(x_arg)
         if (is.null(x_ir)) {
@@ -2139,8 +1974,7 @@
             stop_idx <- .mojor_ir_expr_get_call_arg_idx(parts, nms, "stop", 3)
         }
 
-        used_idx <- unique(c(x_idx, start_idx, stop_idx))
-        used_idx <- used_idx[!is.na(used_idx)]
+        used_idx <- .mojor_ir_expr_used_arg_indices(parts, nms, list(x_idx, start_idx, stop_idx))
         if (length(parts) !=
             length(used_idx)) {
             return(NULL)
@@ -2185,8 +2019,7 @@
         positional_idx <- which(nms == "")
         sep_idx <- .mojor_ir_expr_get_call_arg_idx(parts, nms, "sep")
         collapse_idx <- .mojor_ir_expr_get_call_arg_idx(parts, nms, "collapse")
-        used_idx <- unique(c(positional_idx, sep_idx, collapse_idx))
-        used_idx <- used_idx[!is.na(used_idx)]
+        used_idx <- .mojor_ir_expr_used_arg_indices(parts, nms, c(positional_idx, sep_idx, collapse_idx))
         if (length(parts) !=
             length(used_idx)) {
             return(NULL)
@@ -2247,8 +2080,7 @@
 
         positional_idx <- which(nms == "")
         collapse_idx <- .mojor_ir_expr_get_call_arg_idx(parts, nms, "collapse")
-        used_idx <- unique(c(positional_idx, collapse_idx))
-        used_idx <- used_idx[!is.na(used_idx)]
+        used_idx <- .mojor_ir_expr_used_arg_indices(parts, nms, c(positional_idx, collapse_idx))
         if (length(parts) !=
             length(used_idx)) {
             return(NULL)
@@ -2350,8 +2182,9 @@
             parts, nms, "perl", if (op %in% c("grepl", "grep"))
                 4 else 5
         )
-        used_idx <- unique(c(pattern_idx, replacement_idx, x_idx, fixed_idx, perl_idx))
-        used_idx <- used_idx[!is.na(used_idx)]
+        used_idx <- .mojor_ir_expr_used_arg_indices(
+            parts, nms, list(pattern_idx, replacement_idx, x_idx, fixed_idx, perl_idx)
+        )
         if (length(parts) !=
             length(used_idx)) {
             return(NULL)
