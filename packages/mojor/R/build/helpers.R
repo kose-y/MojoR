@@ -40,19 +40,6 @@
     .mojor_needs_compiled_subset_build(trans)
 }
 
-# Centralized Mojo version probe used by cache signatures.
-.mojor_mojo_version_string <- function() {
-    tryCatch(
-        system("mojo --version", intern = TRUE),
-        error = function(e) "unknown"
-    )
-}
-
-# Stable build key hash helper shared across build paths.
-.mojor_build_hash_from_key_input <- function(key_input) {
-    digest::digest(key_input, algo = "xxhash64")
-}
-
 .mojor_r_binary_path <- function() {
     r_home <- Sys.getenv("R_HOME", unset = "")
     if (nzchar(r_home)) {
@@ -66,30 +53,6 @@
         return(r_bin)
     }
     "R"
-}
-
-.mojor_build_shared_lib_if_missing <- function(lib_path, mojo_file, flags = "", verbose = FALSE) {
-    if (file.exists(lib_path)) {
-        return(invisible(lib_path))
-    }
-    cmd <- sprintf(
-        "mojo build --emit shared-lib -o %s%s %s",
-        shQuote(lib_path),
-        if (nzchar(flags)) paste0(" ", flags) else "",
-        shQuote(mojo_file)
-    )
-    if (isTRUE(verbose)) {
-        message("Mojo build: ", cmd)
-    }
-    status <- system(
-        cmd,
-        ignore.stdout = !isTRUE(verbose),
-        ignore.stderr = !isTRUE(verbose)
-    )
-    if (!identical(status, 0L) || !file.exists(lib_path)) {
-        stop("Mojo build failed")
-    }
-    invisible(lib_path)
 }
 
 .mojor_copy_helper_mojo_to_dir <- function(helper_file, dir) {
@@ -118,10 +81,6 @@
         stop("mojor_build: helper Mojo file not found: ", helper_file, call. = FALSE)
     }
     invisible(TRUE)
-}
-
-.mojor_use_expression_kernel_build_path <- function(trans) {
-    .mojor_needs_compiled_subset_build(trans)
 }
 
 .mojor_build_expression_kernel <- function(

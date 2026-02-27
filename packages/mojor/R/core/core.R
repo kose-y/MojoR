@@ -1681,42 +1681,6 @@ mojor_ir_print <- function(expr, env = parent.frame()) {
     .mojor_find_loaded_dll_pkg(path)
 }
 
-.mojor_is_dll_limit_error <- function(err) {
-    msg <- tryCatch(conditionMessage(err), error = function(e) "")
-    is.character(msg) &&
-        length(msg) == 1L &&
-        nzchar(msg) &&
-        grepl("maximal number of DLLs reached", msg, fixed = TRUE)
-}
-
-.mojor_dyn_load_with_recovery <- function(
-    so_path,
-    lib_dir = NULL,
-    retry_on_limit = TRUE
-) {
-    if (is.null(lib_dir) ||
-        !is.character(lib_dir) ||
-        length(lib_dir) !=
-            1L ||
-        !nzchar(lib_dir)) {
-        lib_dir <- dirname(so_path)
-    }
-    load_once <- function() {
-        .mojor_with_ld_library_path(lib_dir, function() dyn.load(so_path))
-    }
-    tryCatch(
-        load_once(),
-        error = function(e) {
-            if (!isTRUE(retry_on_limit) ||
-                !.mojor_is_dll_limit_error(e)) {
-                stop(e)
-            }
-            .mojor_unload_tracked_wrappers()
-            load_once()
-        }
-    )
-}
-
 .mojor_load_wrapper_pkg <- function(so_path, kind = "kernel") {
     if (is.null(so_path) ||
         !is.character(so_path) ||
