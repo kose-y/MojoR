@@ -1591,68 +1591,12 @@ fn mojor_gpu_buf_i32_cast_f64(
 
 from math import exp, log, log1p, sqrt
 from ziggurat_constants import _KI_DOUBLE, _WI_DOUBLE, _FI_DOUBLE
-from rng_helpers import _rng_next_f64, _rng_fill_runif, _rng_fill_runif_range, _rng_fill_rnorm, _rng_fill_rnorm_mean_sd, _rng_fill_rgamma, _random_standard_normal, _random_standard_gamma, _random_poisson, _random_chisq, _random_beta, _random_weibull, _random_logistic, _random_cauchy, _random_geometric, _random_hypergeometric, _random_signrank, _random_wilcox
+from rng_helpers import _rng_next_f64, _random_standard_normal, _random_standard_gamma, _random_poisson, _random_chisq, _random_beta, _random_weibull, _random_logistic, _random_cauchy, _random_geometric, _random_hypergeometric, _random_signrank, _random_wilcox
 
 @export("mojor_rng_seed", ABI="C")
 fn mojor_rng_seed(seed_val: Int32) -> None:
     """Seed handled by the C bridge state; keep symbol for ABI compatibility."""
     _ = seed_val
-
-@export("mojor_runif", ABI="C")
-fn mojor_runif(out_ptr: MutOpaqueAny, n: Int32, state_ptr: MutOpaqueAny) -> None:
-    """Generate n uniform random numbers U(0,1).
-    
-    Args:
-        out_ptr: Pointer to f64 array of length n.
-        n: Number of random values to generate.
-    """
-    _rng_fill_runif(out_ptr, n, state_ptr)
-
-@export("mojor_runif_range", ABI="C")
-fn mojor_runif_range(out_ptr: MutOpaqueAny, n: Int32, min_val: Float64, max_val: Float64, state_ptr: MutOpaqueAny) -> None:
-    """Generate n uniform random numbers U(min_val, max_val).
-    
-    Args:
-        out_ptr: Pointer to f64 array of length n.
-        n: Number of random values to generate.
-        min_val: Minimum value (inclusive).
-        max_val: Maximum value (exclusive).
-    """
-    _rng_fill_runif_range(out_ptr, n, min_val, max_val, state_ptr)
-
-@export("mojor_rnorm", ABI="C")
-fn mojor_rnorm(out_ptr: MutOpaqueAny, n: Int32, state_ptr: MutOpaqueAny) -> None:
-    """Generate n standard normal random numbers N(0,1).
-    
-    Args:
-        out_ptr: Pointer to f64 array of length n.
-        n: Number of random values to generate.
-    """
-    _rng_fill_rnorm(out_ptr, n, state_ptr)
-
-@export("mojor_rnorm_mean_sd", ABI="C")
-fn mojor_rnorm_mean_sd(out_ptr: MutOpaqueAny, n: Int32, mean: Float64, sd: Float64, state_ptr: MutOpaqueAny) -> None:
-    """Generate n normal random numbers N(mean, sd^2).
-    
-    Args:
-        out_ptr: Pointer to f64 array of length n.
-        n: Number of random values to generate.
-        mean: Mean of the distribution.
-        sd: Standard deviation of the distribution.
-    """
-    _rng_fill_rnorm_mean_sd(out_ptr, n, mean, sd, state_ptr)
-
-@export("mojor_rgamma", ABI="C")
-fn mojor_rgamma(out_ptr: MutOpaqueAny, n: Int32, shape: Float64, rate: Float64, state_ptr: MutOpaqueAny) -> None:
-    """Generate n gamma random numbers Gamma(shape, rate).
-    
-    Args:
-        out_ptr: Pointer to f64 array of length n.
-        n: Number of random values to generate.
-        shape: Shape parameter (alpha) > 0.
-        rate: Rate parameter (beta) > 0 (inverse of scale).
-    """
-    _rng_fill_rgamma(out_ptr, n, shape, rate, state_ptr)
 
 @export("mojor_rexp", ABI="C")
 fn mojor_rexp(out_ptr: MutOpaqueAny, n: Int32, rate: Float64, state_ptr: MutOpaqueAny) -> None:
