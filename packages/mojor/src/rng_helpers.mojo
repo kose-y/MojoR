@@ -1,7 +1,10 @@
+from memory import OpaquePointer, UnsafePointer
 from math import exp, log, log1p, sqrt, tan
-from ziggurat_constants import _ZIGGURAT_NOR_R, _ZIGGURAT_NOR_INV_R
+from ziggurat_constants import _KI_DOUBLE, _WI_DOUBLE, _FI_DOUBLE, _ZIGGURAT_NOR_R, _ZIGGURAT_NOR_INV_R
 
 comptime MutU64Ptr = UnsafePointer[mut=True, type=UInt64, origin=MutAnyOrigin]
+comptime MutOpaqueAny = OpaquePointer[mut=True, origin=MutAnyOrigin]
+comptime MutF64Ptr = UnsafePointer[mut=True, type=Scalar[DType.float64], origin=MutAnyOrigin]
 
 @always_inline
 fn _rng_rotl(x: UInt64, k: Int) -> UInt64:
@@ -70,6 +73,78 @@ fn _mojor_sample_pick_index(
                     chosen = idx
                 break
     return chosen
+
+@always_inline
+fn _rng_out_f64_ptr(out_ptr: MutOpaqueAny) -> MutF64Ptr:
+    return out_ptr.bitcast[Scalar[DType.float64]]()
+
+@always_inline
+fn _rng_state_ptr(state_ptr: MutOpaqueAny) -> MutU64Ptr:
+    return state_ptr.bitcast[UInt64]()
+
+fn _rng_fill_runif(out_ptr: MutOpaqueAny, n: Int32, state_ptr: MutOpaqueAny) -> None:
+    var out = _rng_out_f64_ptr(out_ptr)
+    var n_i = Int(n)
+    var state = _rng_state_ptr(state_ptr)
+    for i in range(n_i):
+        out[i] = _rng_next_f64(state)
+
+fn _rng_fill_runif_range(
+    out_ptr: MutOpaqueAny,
+    n: Int32,
+    min_val: Float64,
+    max_val: Float64,
+    state_ptr: MutOpaqueAny
+) -> None:
+    var out = _rng_out_f64_ptr(out_ptr)
+    var n_i = Int(n)
+    var range_val = max_val - min_val
+    var state = _rng_state_ptr(state_ptr)
+    for i in range(n_i):
+        out[i] = min_val + range_val * _rng_next_f64(state)
+
+fn _rng_fill_rnorm(out_ptr: MutOpaqueAny, n: Int32, state_ptr: MutOpaqueAny) -> None:
+    var out = _rng_out_f64_ptr(out_ptr)
+    var n_i = Int(n)
+    var ki = materialize[_KI_DOUBLE]()
+    var wi = materialize[_WI_DOUBLE]()
+    var fi = materialize[_FI_DOUBLE]()
+    var state = _rng_state_ptr(state_ptr)
+    for i in range(n_i):
+        out[i] = _random_standard_normal(state, ki, wi, fi)
+
+fn _rng_fill_rnorm_mean_sd(
+    out_ptr: MutOpaqueAny,
+    n: Int32,
+    mean: Float64,
+    sd: Float64,
+    state_ptr: MutOpaqueAny
+) -> None:
+    var out = _rng_out_f64_ptr(out_ptr)
+    var n_i = Int(n)
+    var ki = materialize[_KI_DOUBLE]()
+    var wi = materialize[_WI_DOUBLE]()
+    var fi = materialize[_FI_DOUBLE]()
+    var state = _rng_state_ptr(state_ptr)
+    for i in range(n_i):
+        out[i] = mean + sd * _random_standard_normal(state, ki, wi, fi)
+
+fn _rng_fill_rgamma(
+    out_ptr: MutOpaqueAny,
+    n: Int32,
+    shape: Float64,
+    rate: Float64,
+    state_ptr: MutOpaqueAny
+) -> None:
+    var out = _rng_out_f64_ptr(out_ptr)
+    var n_i = Int(n)
+    var ki = materialize[_KI_DOUBLE]()
+    var wi = materialize[_WI_DOUBLE]()
+    var fi = materialize[_FI_DOUBLE]()
+    var state = _rng_state_ptr(state_ptr)
+    var scale = 1.0 / rate
+    for i in range(n_i):
+        out[i] = _random_standard_gamma(state, ki, wi, fi, shape) * scale
 
 @always_inline
 fn _random_standard_exponential(state: MutU64Ptr) -> Float64:

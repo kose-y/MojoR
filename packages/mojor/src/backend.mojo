@@ -1591,7 +1591,7 @@ fn mojor_gpu_buf_i32_cast_f64(
 
 from math import exp, log, log1p, sqrt
 from ziggurat_constants import _KI_DOUBLE, _WI_DOUBLE, _FI_DOUBLE
-from rng_helpers import _rng_next_f64, _random_standard_normal, _random_standard_gamma, _random_poisson, _random_chisq, _random_beta, _random_weibull, _random_logistic, _random_cauchy, _random_geometric, _random_hypergeometric, _random_signrank, _random_wilcox
+from rng_helpers import _rng_next_f64, _rng_fill_runif, _rng_fill_runif_range, _rng_fill_rnorm, _rng_fill_rnorm_mean_sd, _rng_fill_rgamma, _random_standard_normal, _random_standard_gamma, _random_poisson, _random_chisq, _random_beta, _random_weibull, _random_logistic, _random_cauchy, _random_geometric, _random_hypergeometric, _random_signrank, _random_wilcox
 
 @export("mojor_rng_seed", ABI="C")
 fn mojor_rng_seed(seed_val: Int32) -> None:
@@ -1606,11 +1606,7 @@ fn mojor_runif(out_ptr: MutOpaqueAny, n: Int32, state_ptr: MutOpaqueAny) -> None
         out_ptr: Pointer to f64 array of length n.
         n: Number of random values to generate.
     """
-    var out: MutF64Ptr = out_ptr.bitcast[Scalar[DType.float64]]()
-    var n_i = Int(n)
-    var state: MutU64Ptr = state_ptr.bitcast[UInt64]()
-    for i in range(n_i):
-        out[i] = _rng_next_f64(state)
+    _rng_fill_runif(out_ptr, n, state_ptr)
 
 @export("mojor_runif_range", ABI="C")
 fn mojor_runif_range(out_ptr: MutOpaqueAny, n: Int32, min_val: Float64, max_val: Float64, state_ptr: MutOpaqueAny) -> None:
@@ -1622,12 +1618,7 @@ fn mojor_runif_range(out_ptr: MutOpaqueAny, n: Int32, min_val: Float64, max_val:
         min_val: Minimum value (inclusive).
         max_val: Maximum value (exclusive).
     """
-    var out: MutF64Ptr = out_ptr.bitcast[Scalar[DType.float64]]()
-    var n_i = Int(n)
-    var range_val = max_val - min_val
-    var state: MutU64Ptr = state_ptr.bitcast[UInt64]()
-    for i in range(n_i):
-        out[i] = min_val + range_val * _rng_next_f64(state)
+    _rng_fill_runif_range(out_ptr, n, min_val, max_val, state_ptr)
 
 @export("mojor_rnorm", ABI="C")
 fn mojor_rnorm(out_ptr: MutOpaqueAny, n: Int32, state_ptr: MutOpaqueAny) -> None:
@@ -1637,14 +1628,7 @@ fn mojor_rnorm(out_ptr: MutOpaqueAny, n: Int32, state_ptr: MutOpaqueAny) -> None
         out_ptr: Pointer to f64 array of length n.
         n: Number of random values to generate.
     """
-    var out: MutF64Ptr = out_ptr.bitcast[Scalar[DType.float64]]()
-    var n_i = Int(n)
-    var ki = materialize[_KI_DOUBLE]()
-    var wi = materialize[_WI_DOUBLE]()
-    var fi = materialize[_FI_DOUBLE]()
-    var state: MutU64Ptr = state_ptr.bitcast[UInt64]()
-    for i in range(n_i):
-        out[i] = _random_standard_normal(state, ki, wi, fi)
+    _rng_fill_rnorm(out_ptr, n, state_ptr)
 
 @export("mojor_rnorm_mean_sd", ABI="C")
 fn mojor_rnorm_mean_sd(out_ptr: MutOpaqueAny, n: Int32, mean: Float64, sd: Float64, state_ptr: MutOpaqueAny) -> None:
@@ -1656,14 +1640,7 @@ fn mojor_rnorm_mean_sd(out_ptr: MutOpaqueAny, n: Int32, mean: Float64, sd: Float
         mean: Mean of the distribution.
         sd: Standard deviation of the distribution.
     """
-    var out: MutF64Ptr = out_ptr.bitcast[Scalar[DType.float64]]()
-    var n_i = Int(n)
-    var ki = materialize[_KI_DOUBLE]()
-    var wi = materialize[_WI_DOUBLE]()
-    var fi = materialize[_FI_DOUBLE]()
-    var state: MutU64Ptr = state_ptr.bitcast[UInt64]()
-    for i in range(n_i):
-        out[i] = mean + sd * _random_standard_normal(state, ki, wi, fi)
+    _rng_fill_rnorm_mean_sd(out_ptr, n, mean, sd, state_ptr)
 
 @export("mojor_rgamma", ABI="C")
 fn mojor_rgamma(out_ptr: MutOpaqueAny, n: Int32, shape: Float64, rate: Float64, state_ptr: MutOpaqueAny) -> None:
@@ -1675,15 +1652,7 @@ fn mojor_rgamma(out_ptr: MutOpaqueAny, n: Int32, shape: Float64, rate: Float64, 
         shape: Shape parameter (alpha) > 0.
         rate: Rate parameter (beta) > 0 (inverse of scale).
     """
-    var out: MutF64Ptr = out_ptr.bitcast[Scalar[DType.float64]]()
-    var n_i = Int(n)
-    var ki = materialize[_KI_DOUBLE]()
-    var wi = materialize[_WI_DOUBLE]()
-    var fi = materialize[_FI_DOUBLE]()
-    var state: MutU64Ptr = state_ptr.bitcast[UInt64]()
-    var scale = 1.0 / rate
-    for i in range(n_i):
-        out[i] = _random_standard_gamma(state, ki, wi, fi, shape) * scale
+    _rng_fill_rgamma(out_ptr, n, shape, rate, state_ptr)
 
 @export("mojor_rexp", ABI="C")
 fn mojor_rexp(out_ptr: MutOpaqueAny, n: Int32, rate: Float64, state_ptr: MutOpaqueAny) -> None:
