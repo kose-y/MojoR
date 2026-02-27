@@ -1593,11 +1593,6 @@ from math import exp, log, log1p, sqrt
 from ziggurat_constants import _KI_DOUBLE, _WI_DOUBLE, _FI_DOUBLE
 from rng_helpers import _rng_next_f64, _random_standard_normal, _random_standard_gamma, _random_poisson, _random_chisq, _random_beta, _random_weibull, _random_logistic, _random_cauchy, _random_geometric, _random_hypergeometric, _random_signrank, _random_wilcox
 
-@export("mojor_rng_seed", ABI="C")
-fn mojor_rng_seed(seed_val: Int32) -> None:
-    """Seed handled by the C bridge state; keep symbol for ABI compatibility."""
-    _ = seed_val
-
 @export("mojor_rexp", ABI="C")
 fn mojor_rexp(out_ptr: MutOpaqueAny, n: Int32, rate: Float64, state_ptr: MutOpaqueAny) -> None:
     """Generate n exponential random numbers with rate."""
