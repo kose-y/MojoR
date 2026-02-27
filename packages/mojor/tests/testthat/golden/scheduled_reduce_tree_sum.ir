@@ -1,0 +1,3 @@
+list(kind = "scheduled_reduce", mode = "tree", op = "sum", acc = "acc", 
+    arg = "x", n_var = "n_i", dtype = "Float64", init_val = NULL, 
+    empty_val = "0.0", nan_val = NULL, value_cast = NULL, src = NULL)

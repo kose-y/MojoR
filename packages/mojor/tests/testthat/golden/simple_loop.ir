@@ -1,0 +1,30 @@
+loop i
+  range:
+    range_expr
+      expr:
+        <atom> :
+        <atom> 1
+        <atom> n
+  body:
+    block
+      stmts:
+        [1]
+          assign
+            lhs:
+              index one_based
+                base:
+                  var out
+                indices:
+                  [1]
+                    var i
+            rhs:
+              binop +
+                lhs:
+                  index one_based
+                    base:
+                      var x
+                    indices:
+                      [1]
+                        var i
+                rhs:
+                  const 1.0

@@ -1,0 +1,4 @@
+list(kind = "scheduled_reduce", mode = "simd", op = "which.max", 
+    acc = "idx", arg = "x", n_var = "n_i", dtype = "DType.float64", 
+    init_val = NULL, empty_val = "Int32(0)", nan_val = NULL, 
+    value_cast = NULL, src = NULL)

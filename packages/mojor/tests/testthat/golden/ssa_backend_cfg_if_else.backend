@@ -1,0 +1,17 @@
+ssa_backend entry=entry1
+entry1(%v1/*x*/):
+  %v2 = const() value=0.0
+  %v3 = binop:>(%v1, %v2)
+  condbr %v3 ? then2() : else3()
+  succ: then2, else3
+then2():
+  %v4 = const() value=1.0
+  br merge4(%v4)
+  succ: merge4
+else3():
+  %v5 = const() value=2.0
+  br merge4(%v5)
+  succ: merge4
+merge4(%v6/*y*/):
+  ret
+  succ: <none>

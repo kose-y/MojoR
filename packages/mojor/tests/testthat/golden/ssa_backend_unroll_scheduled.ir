@@ -1,0 +1,20 @@
+list(kind = "block", stmts = list(list(kind = "assign", lhs = list(
+    kind = "var", name = "out", src = NULL), rhs = list(kind = "call", 
+    fn = "numeric", args = list(list(kind = "var", name = "n", 
+        src = NULL)), src = numeric(n)), src = NULL), list(kind = "loop", 
+    var = "i", range = list(kind = "range", start = list(kind = "const", 
+        value = "1", src = NULL), end = list(kind = "var", name = "n", 
+        src = NULL), step = NULL, end_exclusive = FALSE, src = NULL), 
+    body = list(kind = "block", stmts = list(list(kind = "assign", 
+        lhs = list(kind = "subscript", var = "out", indices = list(
+            list(kind = "var", name = "i", src = NULL)), src = out[i]), 
+        rhs = list(kind = "binop", op = "+", lhs = list(kind = "index", 
+            base = list(kind = "var", name = "x", src = NULL), 
+            indices = list(list(kind = "var", name = "i", src = NULL)), 
+            index_base = "one_based", src = x[i]), rhs = list(
+            kind = "const", value = "1.0", src = NULL), src = NULL), 
+        src = NULL)), src = NULL), metadata = NULL, src = NULL, 
+    schedule = list(unroll = 4L, n_var = "n_i", vectorize = FALSE, 
+        type_env = list(x = "f64[]", n = "i32", out = "f64[]", 
+            i = "i32"))), list(kind = "raw", expr = out, src = NULL)), 
+    src = NULL)

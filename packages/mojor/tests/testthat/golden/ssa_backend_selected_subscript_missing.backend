@@ -1,0 +1,6 @@
+ssa_backend_selected entry=entry1
+entry1(%v1/*rhs*/, %v2/*out*/, %v3/*i*/):
+  %v4 = idx_missing()
+  mem_store_subscript_missing(%v2, %v3, %v4, %v1) target=out index_kinds=[scalar,missing]
+  ret
+  succ: <none>

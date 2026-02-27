@@ -1,0 +1,27 @@
+ssa_fn entry=entry1
+entry1(%v3/*n*/, %v9/*x*/):
+  %v1 = const()
+  %v2 = const()
+  %v4 = const()
+  br loop_header2(%v2, %v1)
+loop_header2(%v5/*i*/, %v6/*acc*/):
+  %v7 = loop_cond(%v5, %v3, %v4)
+  condbr %v7 ? loop_body3() : loop_exit4(%v6)
+loop_exit4(%v8/*acc*/):
+  stmt:raw()
+  ret
+loop_body3():
+  %v10 = index(%v9, %v5)
+  %v11 = const()
+  %v12 = binop:<(%v10, %v11)
+  condbr %v12 ? then5() : else6()
+then5():
+  %v13 = loop_next(%v5, %v4)
+  br loop_header2(%v13, %v6)
+else6():
+  br merge7()
+merge7():
+  %v14 = index(%v9, %v5)
+  %v15 = binop:+(%v6, %v14)
+  %v16 = loop_next(%v5, %v4)
+  br loop_header2(%v16, %v15)

@@ -1,0 +1,22 @@
+# Note: dylib files are built separately and copied to src/ before R CMD build
+# They should NOT be excluded during build
+^src/symbols\.rds$
+^mojor\.Rcheck$
+^build$
+^build\.sh$
+^src/ABI\.md$
+^BREADTH_EXPANSION_PLAN\.md$
+^COOKBOOK\.md$
+^CPU_FEATURES_CHECKLIST\.md$
+^FEATURES_V0_2\.md$
+^IR_CONTRACT_V1\.md$
+^IR_EFFECT_SYSTEM\.md$
+^IR_IMPLEMENTATION\.md$
+^IR_PARITY_CHECKLIST\.md$
+^IR_SPEC_V1\.md$
+^MOJOR_FN_OUTLINE\.md$
+^REFACTORING_PLAN\.md$
+^SEQ_EXTENSIONS_PLAN\.md$
+^SSA_BACKEND_GUIDE\.md$
+^SUBSET_V1\.md$
+^PACKAGE_STRUCTURE\.md$

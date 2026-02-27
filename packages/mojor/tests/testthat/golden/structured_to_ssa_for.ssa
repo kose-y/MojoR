@@ -1,0 +1,16 @@
+ssa_fn entry=entry1
+entry1(%v3/*n*/):
+  %v1 = const()
+  %v2 = const()
+  %v4 = const()
+  br loop_header2(%v2, %v1)
+loop_header2(%v5/*i*/, %v6/*acc*/):
+  %v7 = loop_cond(%v5, %v3, %v4)
+  condbr %v7 ? loop_body3() : loop_exit4(%v6)
+loop_exit4(%v8/*acc*/):
+  ret %v8
+loop_body3():
+  %v9 = const()
+  %v10 = binop:+(%v6, %v9)
+  %v11 = loop_next(%v5, %v4)
+  br loop_header2(%v11, %v10)

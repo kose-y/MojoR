@@ -1,0 +1,54 @@
+# macOS
+.DS_Store
+**/.DS_Store
+
+# R
+.Rhistory
+.RData
+.Rproj.user/
+*.Rproj
+*.Rcheck/
+**/testthat-problems.rds
+
+# Python
+__pycache__/
+*.pyc
+
+# Build artifacts
+.artifacts/
+*.o
+*.so
+*.dylib
+*.dll
+*.a
+*.mod
+*.lo
+*.la
+packages/mojor/src/symbols.rds
+!packages/mojor/inst/
+!packages/mojor/inst/backend/
+!packages/mojor/inst/backend/**/*
+
+# Editor/Temp
+*.log
+*.tmp
+*.swp
+*~
+.agent/
+.codex/
+.local/
+.roo/
+artifacts/
+test_direct_dir/
+test_order_dir/
+*.tar.gz
+testresults_*.txt
+check_buf
+files*.zip
+tmp_*
+tmp_mojo_dbg_*
+PHASE_6_1_*.md
+/*.md
+!/AGENTS.md
+!/BUILD_AND_TEST.md
+!/README.md

@@ -1,0 +1,23 @@
+ssa_backend_selected entry=entry1
+entry1(%v1/*n*/, %v7/*x*/, %v11/*out*/):
+  %v2 = call(%v1) callee=numeric
+  %v3 = mov_const() value=1
+  %v4 = mov_const() value=1
+  br loop_header2(%v3)
+  succ: loop_header2
+loop_header2(%v5/*i*/):
+  %v6 = loop_cond(%v5, %v1, %v4)
+  condbr %v6 ? loop_body3() : loop_exit4()
+  succ: loop_body3, loop_exit4
+loop_exit4():
+  effect_stmt_raw()
+  ret
+  succ: <none>
+loop_body3():
+  %v8 = load_index(%v7, %v5)
+  %v9 = mov_const() value=1.0
+  %v10 = add(%v8, %v9)
+  mem_store_subscript_scalar(%v11, %v5, %v10) target=out index_kinds=[scalar]
+  %v12 = loop_next(%v5, %v4)
+  br loop_header2(%v12)
+  succ: loop_header2

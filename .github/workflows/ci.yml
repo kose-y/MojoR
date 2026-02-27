@@ -1,0 +1,599 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - master
+      - develop
+  schedule:
+    - cron: '17 4 * * *'
+  workflow_dispatch:
+    inputs:
+      run_high_signal_tests:
+        description: "Run high-signal test slice (--with-tests)"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+      run_gpuarray_f64_safe_audit:
+        description: "Run GPUArray f64 route audit in default safe mode"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+      run_gpuarray_f64_live_probe_debug:
+        description: "Run GPUArray f64 route audit with --allow-gpu-probe=1 (debug)"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+      run_gpuarray_math_safe_audit:
+        description: "Run GPUArray math route audit in default safe mode"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+      run_gpuarray_math_nightly_smoke:
+        description: "Run GPUArray nightly smoke (leak loop + math route gate)"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+      run_gpuarray_context_stability:
+        description: "Run GPUArray context-stability lane (repeated full test_gpu_array)"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+      run_release_candidate_freeze_profile:
+        description: "Run strict release-freeze RC profile gate"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+      run_gpu_jit_preview_runtime:
+        description: "Run GPU JIT unified_preview runtime focused tests"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
+jobs:
+  gates:
+    name: gates
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup R
+        uses: r-lib/actions/setup-r@v2
+
+      - name: Install test deps
+        run: Rscript -e 'install.packages(c("testthat","float"), repos="https://cloud.r-project.org")'
+
+      - name: Run continuous verification gates
+        run: bash scripts/check_continuous_verification.sh --skip-package-tarball --with-tests
+
+      - name: Run perf guardrail smoke
+        if: ${{ false }}
+        run: >
+          bash scripts/check_perf_guardrail.sh
+          --baseline docs/MILESTONES/PERF_BASELINE_SAMPLE.csv
+          --current docs/MILESTONES/PERF_BASELINE_SAMPLE.csv
+
+      - name: Run parallel perf guardrail sanity
+        if: ${{ false }}
+        run: |
+          cat > /tmp/mojor_parallel_baseline_ci.csv <<'EOF'
+          name,ms
+          mojor_parallel_speedup,1.05
+          EOF
+          cat > /tmp/mojor_parallel_current_ok_ci.csv <<'EOF'
+          name,ms
+          mojor_parallel_speedup,1.20
+          EOF
+          cat > /tmp/mojor_parallel_current_missing_ci.csv <<'EOF'
+          name,ms
+          mojor_seq_ms,100
+          EOF
+
+          bash scripts/check_parallel_perf_guardrail.sh \
+            --baseline /tmp/mojor_parallel_baseline_ci.csv \
+            --current /tmp/mojor_parallel_current_ok_ci.csv
+
+          set +e
+          bash scripts/check_parallel_perf_guardrail.sh \
+            --baseline /tmp/mojor_parallel_baseline_ci.csv \
+            --current /tmp/mojor_parallel_current_missing_ci.csv
+          rc=$?
+          set -e
+          if [ "$rc" -ne 2 ]; then
+            echo "Expected input-error exit code 2 for missing metric, got $rc"
+            exit 1
+          fi
+
+  indexing_nightly:
+    name: indexing-nightly
+    if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.event.inputs.run_high_signal_tests == 'true') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup R
+        uses: r-lib/actions/setup-r@v2
+
+      - name: Install R deps
+        run: Rscript -e 'install.packages(c("testthat","withr"), repos="https://cloud.r-project.org")'
+
+      - name: Install Mojo
+        run: bash scripts/install_mojo_ci.sh
+
+      - name: Build backend
+        run: bash packages/mojor/build.sh
+
+      - name: Clear MojoR cache
+        run: Rscript tools/mojor_cache_cli.R clear --remove-builds
+
+      - name: Run indexing hardening suites
+        run: |
+          Rscript -e 'testthat::test_file("packages/mojor/tests/testthat/test_loop_index_edge_syntax.R")'
+          Rscript -e 'testthat::test_file("packages/mojor/tests/testthat/test_loop_index_seeded_parity.R")'
+          Rscript -e 'testthat::test_file("packages/mojor/tests/testthat/test_transpile_slice_index.R")'
+          Rscript -e 'testthat::test_file("packages/mojor/tests/testthat/test_slice_assign_nd.R")'
+          Rscript -e 'testthat::test_file("packages/mojor/tests/testthat/test_array_output_dim.R")'
+          Rscript -e 'testthat::test_file("packages/mojor/tests/testthat/test_subscript_variants.R")'
+          Rscript -e 'testthat::test_file("packages/mojor/tests/testthat/test_transpile_slice_ir.R")'
+          Rscript -e 'testthat::test_file("packages/mojor/tests/testthat/test_indexing_comprehensive.R", reporter=testthat::SummaryReporter$new(), stop_on_failure=FALSE, stop_on_warning=FALSE)'
+
+      - name: Run reporter stress gate
+        run: |
+          Rscript scripts/repro_indexing_segv_subset.R --reporter=summary --repeats=3 --reset_mode=soft --file_reset_mode=soft --per_test_reset=false --stress_opt_level=0 --disable_r_jit=true --clear_cache_each_run=true
+          Rscript scripts/repro_indexing_segv_subset.R --reporter=check --repeats=3 --reset_mode=soft --file_reset_mode=soft --per_test_reset=false --stress_opt_level=0 --disable_r_jit=true --clear_cache_each_run=true
+          Rscript scripts/bisect_indexing_sameproc.R --mode=suffix --target_start=1 --tail=168 --repeats=2 --attempts=1 --reporter=summary --reset_mode=soft --file_reset_mode=soft --per_test_reset=false --stress_opt_level=0 --disable_r_jit=true
+          Rscript scripts/bisect_indexing_sameproc.R --mode=suffix --target_start=1 --tail=168 --repeats=2 --attempts=1 --reporter=check --reset_mode=soft --file_reset_mode=soft --per_test_reset=false --stress_opt_level=0 --disable_r_jit=true
+
+  package_tarball_linux:
+    name: package-tarball-linux
+    needs: gates
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup R
+        uses: r-lib/actions/setup-r@v2
+
+      - name: Install R deps
+        run: Rscript -e 'install.packages(c("R6","float","jsonlite","testthat","roxygen2"), repos="https://cloud.r-project.org")'
+
+      - name: Install Mojo
+        run: bash scripts/install_mojo_ci.sh
+
+      - name: Run package tarball gate
+        env:
+          MOJOR_SKIP_BACKEND_BUNDLE_SYMBOL_CHECK: "1"
+          MOJOR_MOJO_BUILD_TARGET: "NO_GPU"
+        run: bash scripts/check_package_tarball.sh
+
+      - name: Upload package check logs (failure)
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-tarball-linux-logs
+          if-no-files-found: ignore
+          path: |
+            .artifacts/package-check/build.out
+            .artifacts/package-check/check.out
+            .artifacts/package-check/00check.log
+            .artifacts/package-check/00install.out
+            mojor.Rcheck/00check.log
+            mojor.Rcheck/00install.out
+
+  package_tarball_macos:
+    name: package-tarball-macos
+    needs: gates
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup R
+        uses: r-lib/actions/setup-r@v2
+
+      - name: Install R deps
+        run: Rscript -e 'install.packages(c("R6","float","jsonlite","testthat","roxygen2"), repos="https://cloud.r-project.org")'
+
+      - name: Install Mojo
+        run: bash scripts/install_mojo_ci.sh
+
+      - name: Run package tarball gate
+        env:
+          MOJOR_CHECK_NO_TESTS: "1"
+        run: bash scripts/check_package_tarball.sh
+
+      - name: Upload package check logs (failure)
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-tarball-macos-logs
+          if-no-files-found: ignore
+          path: |
+            .artifacts/package-check/build.out
+            .artifacts/package-check/check.out
+            .artifacts/package-check/00check.log
+            .artifacts/package-check/00install.out
+            mojor.Rcheck/00check.log
+            mojor.Rcheck/00install.out
+
+  release_candidate_freeze_profile:
+    name: release-candidate-freeze-profile
+    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.run_release_candidate_freeze_profile == 'true' }}
+    needs: gates
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup R
+        uses: r-lib/actions/setup-r@v2
+
+      - name: Install R deps
+        run: Rscript -e 'install.packages(c("R6","float","jsonlite","testthat","roxygen2"), repos="https://cloud.r-project.org")'
+
+      - name: Run strict release-freeze profile
+        run: >
+          bash scripts/check_release_candidate.sh
+          --profile release-freeze
+          --perf-baseline docs/MILESTONES/PERF_BASELINE_SAMPLE.csv
+          --perf-current docs/MILESTONES/PERF_BASELINE_SAMPLE.csv
+          --without-gpuarray-f64-routes
+          --verbose
+
+  parallel_perf_linux:
+    name: parallel-perf-linux
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    needs: gates
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup R
+        uses: r-lib/actions/setup-r@v2
+
+      - name: Install R deps
+        run: Rscript -e 'install.packages(c("R6","float","jsonlite","testthat"), repos="https://cloud.r-project.org")'
+
+      - name: Install Mojo
+        run: bash scripts/install_mojo_ci.sh
+
+      - name: Run parallel benchmark smoke (Linux in-process required)
+        env:
+          MOJOR_MOJO_BUILD_TARGET: "NO_GPU"
+        run: >
+          Rscript packages/mojor/tools/benchmark_parallel_smoke.R
+          --runs=3
+          --warmup=1
+          --n=2000000
+          --min-speedup=1.01
+          --enforce=1
+          --allow-skip=0
+          --require-inprocess-linux=1
+          --write-current=docs/MILESTONES/PERF_PARALLEL_CURRENT.csv
+
+      - name: Run parallel perf guardrail
+        run: >
+          bash scripts/check_parallel_perf_guardrail.sh
+          --baseline docs/MILESTONES/PERF_PARALLEL_BASELINE.csv
+          --current docs/MILESTONES/PERF_PARALLEL_CURRENT.csv
+          --min-speedup-ratio 0.90
+          --absolute-min-speedup 1.01
+
+  high_signal_tests:
+    name: high-signal-tests
+    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.run_high_signal_tests == 'true' }}
+    needs: gates
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup R
+        uses: r-lib/actions/setup-r@v2
+
+      - name: Install testthat
+        run: Rscript -e 'install.packages("testthat", repos="https://cloud.r-project.org")'
+
+      - name: Run continuous verification with tests
+        run: bash scripts/check_continuous_verification.sh --with-tests
+
+      - name: Run parallel benchmark smoke
+        run: >
+          Rscript packages/mojor/tools/benchmark_parallel_smoke.R
+          --runs=3
+          --warmup=1
+          --n=2000000
+          --min-speedup=1.01
+          --enforce=1
+          --allow-skip=1
+          --require-inprocess-linux=1
+          --write-current=docs/MILESTONES/PERF_PARALLEL_CURRENT.csv
+
+  gpu_jit_preview_runtime:
+    name: gpu-jit-preview-runtime
+    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.run_gpu_jit_preview_runtime == 'true' }}
+    needs: gates
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup R
+        uses: r-lib/actions/setup-r@v2
+
+      - name: Install R deps
+        run: Rscript -e 'install.packages(c("testthat","float"), repos="https://cloud.r-project.org")'
+
+      - name: Install Mojo
+        run: bash scripts/install_mojo_ci.sh
+
+      - name: Build backend
+        run: bash packages/mojor/build.sh
+
+      - name: Run prototype GPU JIT preview runtime tests
+        run: Rscript -e 'testthat::test_file("packages/mojor/tests/testthat/test_gpu_jit_preview_runtime.R")'
+
+      - name: Run package GPU JIT preview runtime tests
+        run: Rscript -e 'testthat::test_file("packages/mojor/tests/testthat/test_gpu_jit_preview_runtime.R")'
+
+  gpuarray_f64_safe_audit:
+    name: gpuarray-f64-safe-audit
+    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.run_gpuarray_f64_safe_audit == 'true' }}
+    needs: gates
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup R
+        uses: r-lib/actions/setup-r@v2
+
+      - name: Install testthat
+        run: Rscript -e 'install.packages("testthat", repos="https://cloud.r-project.org")'
+
+      - name: Install Mojo
+        run: bash scripts/install_mojo_ci.sh
+
+      - name: Build backend
+        run: bash packages/mojor/build.sh
+
+      - name: Detect GPU availability
+        id: gpucheck
+        run: |
+          Rscript -e '
+            source("packages/mojor/R.R")
+            ok <- FALSE
+            if (file.exists("packages/mojor/build/mojor_bridge.so")) {
+              try(mojor_load("packages/mojor/build"), silent = TRUE)
+              ok <- isTRUE(mojor_is_loaded()) && isTRUE(mojor_has_gpu())
+            }
+            cat(paste0("gpu_available=", if (ok) "true" else "false", "\n"), file = Sys.getenv("GITHUB_OUTPUT"), append = TRUE)
+            if (!ok) cat("GPU unavailable on runner; skipping GPUArray f64 safe audit.\n")
+          '
+
+      - name: Run prototype safe-mode f64 route audit
+        if: ${{ steps.gpucheck.outputs.gpu_available == 'true' }}
+        run: >
+          Rscript packages/mojor/tools/audit_gpuarray_f64_routes.R
+          --repeats=8
+          --baseline=docs/MILESTONES/GPUARRAY_F64_ROUTE_BASELINE.csv
+          --profile=closeout
+
+      - name: Run package safe-mode f64 route audit
+        if: ${{ steps.gpucheck.outputs.gpu_available == 'true' }}
+        run: >
+          Rscript packages/mojor/tools/audit_gpuarray_f64_routes.R
+          --repeats=8
+          --baseline=docs/MILESTONES/GPUARRAY_F64_ROUTE_BASELINE.csv
+          --profile=closeout
+
+  gpuarray_f64_live_probe_debug:
+    name: gpuarray-f64-live-probe-debug
+    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.run_gpuarray_f64_live_probe_debug == 'true' }}
+    needs: gates
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup R
+        uses: r-lib/actions/setup-r@v2
+
+      - name: Install Mojo
+        run: bash scripts/install_mojo_ci.sh
+
+      - name: Build backend
+        run: bash packages/mojor/build.sh
+
+      - name: Require GPU for live probe debug
+        run: |
+          Rscript -e '
+            source("packages/mojor/R.R")
+            try(mojor_load("packages/mojor/build"), silent = TRUE)
+            if (!isTRUE(mojor_is_loaded()) || !isTRUE(mojor_has_gpu())) {
+              stop("GPU not available on runner for live probe debug")
+            }
+          '
+
+      - name: Run prototype live-probe f64 route audit (timed)
+        env:
+          MOJOR_GPU_F64_PROBE_MODE: subprocess
+          MOJOR_GPU_F64_PROBE_TIMEOUT_SEC: "45"
+        run: >
+          timeout 300
+          Rscript packages/mojor/tools/audit_gpuarray_f64_routes.R
+          --repeats=8
+          --baseline=docs/MILESTONES/GPUARRAY_F64_ROUTE_BASELINE.csv
+          --profile=closeout
+          --allow-gpu-probe=1
+
+      - name: Run package live-probe f64 route audit (timed)
+        env:
+          MOJOR_GPU_F64_PROBE_MODE: subprocess
+          MOJOR_GPU_F64_PROBE_TIMEOUT_SEC: "45"
+        run: >
+          timeout 300
+          Rscript packages/mojor/tools/audit_gpuarray_f64_routes.R
+          --repeats=8
+          --baseline=docs/MILESTONES/GPUARRAY_F64_ROUTE_BASELINE.csv
+          --profile=closeout
+          --allow-gpu-probe=1
+
+  gpuarray_math_safe_audit:
+    name: gpuarray-math-safe-audit
+    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.run_gpuarray_math_safe_audit == 'true' }}
+    needs: gates
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup R
+        uses: r-lib/actions/setup-r@v2
+
+      - name: Install R deps
+        run: Rscript -e 'install.packages(c("testthat","float"), repos="https://cloud.r-project.org")'
+
+      - name: Install Mojo
+        run: bash scripts/install_mojo_ci.sh
+
+      - name: Build backend
+        run: bash packages/mojor/build.sh
+
+      - name: Detect GPU availability
+        id: gpucheck
+        run: |
+          Rscript -e '
+            source("packages/mojor/R/mojor.R")
+            ok <- FALSE
+            if (file.exists("packages/mojor/build/mojor_bridge.so")) {
+              try(mojor_load("packages/mojor/build"), silent = TRUE)
+              ok <- isTRUE(mojor_is_loaded()) && isTRUE(mojor_has_gpu())
+            }
+            cat(paste0("gpu_available=", if (ok) "true" else "false", "\n"), file = Sys.getenv("GITHUB_OUTPUT"), append = TRUE)
+            if (!ok) cat("GPU unavailable on runner; skipping GPUArray math safe audit.\n")
+          '
+
+      - name: Run package math route audit
+        if: ${{ steps.gpucheck.outputs.gpu_available == 'true' }}
+        run: >
+          Rscript packages/mojor/tools/audit_gpuarray_math_routes.R
+          --run-profile=ci-fast
+          --baseline=docs/MILESTONES/GPUARRAY_MATH_ROUTE_BASELINE.csv
+          --reason-baseline=docs/MILESTONES/GPUARRAY_MATH_REASON_BASELINE.csv
+
+      - name: Run package math wrapper regression check
+        if: ${{ steps.gpucheck.outputs.gpu_available == 'true' }}
+        run: >
+          Rscript packages/mojor/tools/check_gpuarray_math_wrapper_regression.R
+          --iters=12
+          --quiet-fallback-warnings=true
+
+  gpuarray_math_nightly_smoke:
+    name: gpuarray-math-nightly-smoke
+    if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.event.inputs.run_gpuarray_math_nightly_smoke == 'true') }}
+    needs: gates
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup R
+        uses: r-lib/actions/setup-r@v2
+
+      - name: Install R deps
+        run: Rscript -e 'install.packages(c("testthat","float"), repos="https://cloud.r-project.org")'
+
+      - name: Install Mojo
+        run: bash scripts/install_mojo_ci.sh
+
+      - name: Build backend
+        run: bash packages/mojor/build.sh
+
+      - name: Run GPUArray nightly smoke
+        run: >
+          Rscript packages/mojor/tools/gpuarray_math_nightly_smoke.R
+          --repeats=8
+          --leak-iters=24
+          --baseline=docs/MILESTONES/GPUARRAY_MATH_ROUTE_BASELINE.csv
+          --profile=nightly
+          --quiet-fallback-warnings=true
+          --progress-every=2
+
+  gpuarray_context_stability:
+    name: gpuarray-context-stability
+    if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.event.inputs.run_gpuarray_context_stability == 'true') }}
+    needs: gates
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup R
+        uses: r-lib/actions/setup-r@v2
+
+      - name: Install R deps
+        run: Rscript -e 'install.packages(c("testthat","float"), repos="https://cloud.r-project.org")'
+
+      - name: Install Mojo
+        run: bash scripts/install_mojo_ci.sh
+
+      - name: Build backend
+        run: bash packages/mojor/build.sh
+
+      - name: Detect GPU availability
+        id: gpucheck_ctx
+        run: |
+          Rscript -e '
+            source("packages/mojor/R/mojor.R")
+            ok <- FALSE
+            if (file.exists("packages/mojor/build/mojor_bridge.so")) {
+              try(mojor_load("packages/mojor/build"), silent = TRUE)
+              ok <- isTRUE(mojor_is_loaded()) && isTRUE(mojor_has_gpu())
+            }
+            cat(paste0("gpu_available=", if (ok) "true" else "false", "\n"), file = Sys.getenv("GITHUB_OUTPUT"), append = TRUE)
+            if (!ok) cat("GPU unavailable on runner; skipping GPUArray context-stability lane.\n")
+          '
+
+      - name: Run GPUArray context-stability lane
+        if: ${{ steps.gpucheck_ctx.outputs.gpu_available == 'true' }}
+        run: >
+          Rscript scripts/check_gpuarray_context_stability.R
+          --file=packages/mojor/tests/testthat/test_gpu_array.R
+          --repeats=2
+          --reporter=summary
+          --reset_mode=soft
+          --file_reset_mode=soft
+          --per_test_reset=false
+          --disable_r_jit=true
+          --stress_opt_level=0

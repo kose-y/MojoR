@@ -1,0 +1,8 @@
+ssa_backend_selected entry=entry1
+entry1():
+  reduce_init(acc, x, n_i) reduce_mode=simd reduce_op=sum acc=acc arg=x n_var=n_i dtype=DType.float64 init_val=0.0 empty_val=0.0
+  reduce_step(acc, x, n_i) reduce_mode=simd reduce_op=sum acc=acc arg=x n_var=n_i dtype=DType.float64 init_val=0.0 empty_val=0.0
+  reduce_merge(acc, x, n_i) reduce_mode=simd reduce_op=sum acc=acc arg=x n_var=n_i dtype=DType.float64 init_val=0.0 empty_val=0.0 merge_kind=simd_lane
+  reduce_finalize(acc, x, n_i) reduce_mode=simd reduce_op=sum acc=acc arg=x n_var=n_i dtype=DType.float64 init_val=0.0 empty_val=0.0
+  ret
+  succ: <none>

@@ -1,0 +1,366 @@
+#!/bin/sh
+set -eu
+
+ROOT="$(CDPATH= cd -- "$(dirname "$0")" && pwd)"
+SRC_DIR="$ROOT/src"
+BUNDLE_ROOT="$ROOT/inst/backend"
+MANIFEST="$BUNDLE_ROOT/MANIFEST.tsv"
+HELPER_SYNC_SCRIPT="$ROOT/tools/sync_mojo_helpers.sh"
+REPO_ROOT="$(CDPATH= cd -- "$ROOT/../.." && pwd)"
+INSTALL_HELPER="$REPO_ROOT/scripts/install_mojo.sh"
+REQUIRED_MOJO_PREFIX="${MOJOR_REQUIRED_MOJO_PREFIX:-0.26}"
+FORCE_BUILD_FALLBACK="${MOJOR_FORCE_BUILD_FALLBACK:-0}"
+DEFAULT_CI_LINUX_MOJO_TARGET="${MOJOR_CI_LINUX_MOJO_TARGET:-NO_GPU}"
+
+OS="$(uname -s)"
+ARCH="$(uname -m)"
+case "$ARCH" in
+  aarch64) ARCH="arm64" ;;
+  amd64) ARCH="x86_64" ;;
+esac
+case "$OS" in
+  Darwin)
+    EXT="dylib"
+    PLATFORM_KEY="darwin-$ARCH"
+    ;;
+  Linux)
+    EXT="so"
+    PLATFORM_KEY="linux-$ARCH"
+    ;;
+  *)
+    EXT="so"
+    PLATFORM_KEY="unknown-$ARCH"
+    ;;
+esac
+
+log() {
+  echo "configure: $*"
+}
+
+sync_mojo_helpers() {
+  if [ -x "$HELPER_SYNC_SCRIPT" ]; then
+    "$HELPER_SYNC_SCRIPT"
+  elif [ -f "$HELPER_SYNC_SCRIPT" ]; then
+    sh "$HELPER_SYNC_SCRIPT"
+  else
+    log "missing helper sync script: $HELPER_SYNC_SCRIPT"
+    return 1
+  fi
+  log "synced helper Mojo files into inst/mojo_helpers"
+  return 0
+}
+
+extract_mojo_version() {
+  raw="$1"
+  version="$(printf '%s\n' "$raw" | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?' | head -n 1)"
+  if [ -z "$version" ]; then
+    version="$(printf '%s\n' "$raw" | grep -Eo '[0-9]+\.[0-9]+' | head -n 1)"
+  fi
+  printf '%s' "$version"
+}
+
+check_mojo_toolchain() {
+  skip_flag="$(printf '%s' "${MOJOR_SKIP_MOJO_CHECK:-0}" | tr '[:upper:]' '[:lower:]')"
+  case "$skip_flag" in
+    1|true|yes|on)
+      log "skipping Mojo version gate (MOJOR_SKIP_MOJO_CHECK=$skip_flag)"
+      return 0
+      ;;
+  esac
+
+  if ! command -v mojo >/dev/null 2>&1; then
+    cat >&2 <<EOF
+configure: ERROR: mojo binary not found on PATH.
+configure: MojoR requires Mojo ${REQUIRED_MOJO_PREFIX}.x at install time.
+configure: Install Mojo with:
+configure:   bash "$INSTALL_HELPER"
+configure: or follow: https://docs.modular.com/mojo/manual/get-started/
+EOF
+    return 1
+  fi
+
+  mojo_raw="$(mojo --version 2>/dev/null || true)"
+  mojo_ver="$(extract_mojo_version "$mojo_raw")"
+  case "$mojo_ver" in
+    "$REQUIRED_MOJO_PREFIX"|"$REQUIRED_MOJO_PREFIX".*)
+      return 0
+      ;;
+    "")
+      cat >&2 <<EOF
+configure: ERROR: unable to parse mojo version from:
+configure:   $mojo_raw
+configure: MojoR requires Mojo ${REQUIRED_MOJO_PREFIX}.x.
+configure: Run:
+configure:   bash "$INSTALL_HELPER"
+EOF
+      return 1
+      ;;
+    *)
+      cat >&2 <<EOF
+configure: ERROR: unsupported mojo version '$mojo_ver' (raw: $mojo_raw).
+configure: MojoR requires Mojo ${REQUIRED_MOJO_PREFIX}.x.
+configure: Use:
+configure:   bash "$INSTALL_HELPER"
+EOF
+      return 1
+      ;;
+  esac
+}
+
+normalize_macos_install_names() {
+  if [ "$OS" != "Darwin" ]; then
+    return 0
+  fi
+  if ! command -v install_name_tool >/dev/null 2>&1; then
+    return 0
+  fi
+  libs="libmojor_backend.$EXT libmojor_backend_rng.$EXT libmojor_backend_gamma.$EXT"
+  for file in $libs; do
+    [ -f "$SRC_DIR/$file" ] || continue
+    install_name_tool -id "@loader_path/$file" "$SRC_DIR/$file" 2>/dev/null || true
+  done
+}
+
+find_macos_runtime_lib() {
+  lib="$1"
+  mojo_bin="$(command -v mojo 2>/dev/null || true)"
+  mojo_prefix=""
+  if [ -n "$mojo_bin" ]; then
+    mojo_dir="$(CDPATH= cd -- "$(dirname "$mojo_bin")" && pwd)"
+    mojo_prefix="$(CDPATH= cd -- "$mojo_dir/.." && pwd)"
+    for dir in "$mojo_dir/../lib" "$mojo_dir/../runtime/lib" "$mojo_prefix/lib" "$mojo_prefix/lib64"; do
+      if [ -f "$dir/$lib" ]; then
+        printf '%s' "$dir/$lib"
+        return 0
+      fi
+    done
+    for dir in $mojo_prefix/lib/python*/site-packages/modular/lib; do
+      if [ -f "$dir/$lib" ]; then
+        printf '%s' "$dir/$lib"
+        return 0
+      fi
+    done
+  fi
+
+  for dir in \
+    "$HOME/.modular/pkg/packages.modular.com_modular/lib" \
+    "$HOME/.modular/pkg/packages.modular.com_mojo/lib" \
+    "$HOME/.modular/pkg/packages.modular.com_max/lib" \
+    "$HOME/.modular/lib"; do
+    if [ -f "$dir/$lib" ]; then
+      printf '%s' "$dir/$lib"
+      return 0
+    fi
+  done
+  return 1
+}
+
+copy_macos_runtime_libs() {
+  if [ "$OS" != "Darwin" ]; then
+    return 0
+  fi
+  mkdir -p "$SRC_DIR"
+  pending="libKGENCompilerRTShared.dylib libAsyncRTMojoBindings.dylib"
+  copied=""
+  while [ -n "$pending" ]; do
+    lib="${pending%% *}"
+    if [ "$pending" = "$lib" ]; then
+      pending=""
+    else
+      pending="${pending#* }"
+    fi
+    case " $copied " in
+      *" $lib "*) continue ;;
+    esac
+    copied="$copied $lib"
+
+    src="$(find_macos_runtime_lib "$lib" || true)"
+    if [ -z "$src" ]; then
+      log "warning: unable to locate runtime dependency '$lib'; relying on system rpath"
+      continue
+    fi
+    cp "$src" "$SRC_DIR/$lib"
+
+    if ! command -v otool >/dev/null 2>&1; then
+      continue
+    fi
+    deps="$(otool -L "$src" 2>/dev/null | awk 'NR > 1 {print $1}' | sed -n 's#^@rpath/\([^[:space:]]*\.dylib\)$#\1#p' | tr '\n' ' ')"
+    for dep in $deps; do
+      case " $copied $pending " in
+        *" $dep "*) ;;
+        *) pending="$pending $dep" ;;
+      esac
+    done
+  done
+}
+
+sha256_file() {
+  file="$1"
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$file" | awk '{print $1}'
+    return 0
+  fi
+  shasum -a 256 "$file" | awk '{print $1}'
+}
+
+collect_nm_symbols() {
+  lib="$1"
+  out=""
+  if [ "$OS" = "Darwin" ]; then
+    out="$(nm -gU "$lib" 2>/dev/null || true)"
+  elif [ "$OS" = "Linux" ]; then
+    out="$(nm -D --defined-only "$lib" 2>/dev/null || true)"
+    if [ -z "$out" ]; then
+      out="$(nm -g "$lib" 2>/dev/null || true)"
+    fi
+  fi
+  printf '%s\n' "$out"
+}
+
+verify_required_backend_symbols() {
+  lib="$SRC_DIR/libmojor_backend.$EXT"
+  if [ ! -f "$lib" ]; then
+    log "missing backend library for symbol check: $lib"
+    return 1
+  fi
+  if ! command -v nm >/dev/null 2>&1; then
+    log "required tool missing for symbol check: nm"
+    return 1
+  fi
+  symbols="$(collect_nm_symbols "$lib")"
+  if [ -z "$symbols" ]; then
+    log "failed to read exported symbols from $lib"
+    return 1
+  fi
+
+  missing=""
+  for sym in mojor_gpu_cap_f64_matmul mojor_gpu_cap_f64_reduce mojor_gpu_cap_i32_scatter; do
+    if ! printf '%s\n' "$symbols" | grep -Eq "[[:space:]]_?$sym$"; then
+      missing="$missing $sym"
+    fi
+  done
+
+  if [ -n "$missing" ]; then
+    log "required backend symbols missing in $(basename "$lib"):$(printf ' %s' $missing)"
+    return 1
+  fi
+  return 0
+}
+
+verify_bundle_file() {
+  file="$1"
+  if [ ! -f "$MANIFEST" ]; then
+    log "manifest missing: $MANIFEST"
+    return 1
+  fi
+  expected="$(awk -F '\t' -v p="$PLATFORM_KEY" -v f="$file" 'NR > 1 && $1 == p && $2 == f {print $3; exit}' "$MANIFEST")"
+  if [ -z "$expected" ]; then
+    log "manifest entry missing for $PLATFORM_KEY/$file"
+    return 1
+  fi
+  actual="$(sha256_file "$BUNDLE_DIR/$file")"
+  if [ "$actual" != "$expected" ]; then
+    log "checksum mismatch for $BUNDLE_DIR/$file"
+    log "  expected: $expected"
+    log "  actual:   $actual"
+    return 1
+  fi
+  return 0
+}
+
+copy_bundle_to_src() {
+  BUNDLE_DIR="$BUNDLE_ROOT/$PLATFORM_KEY"
+  [ -d "$BUNDLE_DIR" ] || return 1
+  libs="libmojor_backend.$EXT libmojor_backend_rng.$EXT libmojor_backend_gamma.$EXT"
+  for file in $libs; do
+    [ -f "$BUNDLE_DIR/$file" ] || return 1
+    verify_bundle_file "$file" || return 1
+  done
+  mkdir -p "$SRC_DIR"
+  for file in $libs; do
+    cp "$BUNDLE_DIR/$file" "$SRC_DIR/"
+  done
+  normalize_macos_install_names
+  log "provisioned backend libraries from bundle '$PLATFORM_KEY'"
+  return 0
+}
+
+build_fallback() {
+  BUILD_SCRIPT="$ROOT/build.sh"
+  if [ ! -x "$BUILD_SCRIPT" ] && [ ! -f "$BUILD_SCRIPT" ]; then
+    BUILD_SCRIPT="$ROOT/tools/build_backend.sh"
+  fi
+  [ -x "$BUILD_SCRIPT" ] || [ -f "$BUILD_SCRIPT" ] || return 1
+  command -v mojo >/dev/null 2>&1 || return 1
+  build_target="${MOJOR_MOJO_BUILD_TARGET:-}"
+  if [ -z "$build_target" ] && [ "$OS" = "Linux" ]; then
+    ci_flag="$(printf '%s' "${CI:-}" | tr '[:upper:]' '[:lower:]')"
+    case "$ci_flag" in
+      1|true|yes|on)
+        build_target="$DEFAULT_CI_LINUX_MOJO_TARGET"
+        ;;
+    esac
+  fi
+  if [ -n "$build_target" ]; then
+    log "build fallback Mojo target: $build_target"
+  else
+    log "build fallback Mojo target: <default>"
+  fi
+  log "bundle unavailable for '$PLATFORM_KEY'; attempting build fallback with mojo"
+  MOJOR_MOJO_BUILD_TARGET="$build_target" MOJOR_COPY_LIBS_TO_SRC=1 MOJOR_UPDATE_BACKEND_BUNDLE=0 bash "$BUILD_SCRIPT"
+  [ -f "$SRC_DIR/libmojor_backend.$EXT" ] || return 1
+  [ -f "$SRC_DIR/libmojor_backend_rng.$EXT" ] || return 1
+  [ -f "$SRC_DIR/libmojor_backend_gamma.$EXT" ] || return 1
+  log "build fallback succeeded for '$PLATFORM_KEY'"
+  return 0
+}
+
+if ! check_mojo_toolchain; then
+  exit 1
+fi
+
+if ! sync_mojo_helpers; then
+  cat >&2 <<EOF
+configure: ERROR: failed to sync helper Mojo files from '$SRC_DIR' into '$ROOT/inst/mojo_helpers'.
+configure: Verify helper sources exist in src/ and retry installation.
+EOF
+  exit 1
+fi
+
+use_force_build_fallback() {
+  case "$(printf '%s' "$FORCE_BUILD_FALLBACK" | tr '[:upper:]' '[:lower:]')" in
+    1|true|yes|on) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+provision_backend() {
+  if use_force_build_fallback; then
+    log "forcing build fallback (MOJOR_FORCE_BUILD_FALLBACK=$FORCE_BUILD_FALLBACK)"
+    build_fallback
+    return $?
+  fi
+  copy_bundle_to_src || build_fallback
+}
+
+if provision_backend; then
+  copy_macos_runtime_libs
+  if verify_required_backend_symbols; then
+    exit 0
+  fi
+  cat >&2 <<EOF
+configure: ERROR: Backend symbol contract check failed for '$SRC_DIR/libmojor_backend.$EXT'.
+configure: Required symbols: mojor_gpu_cap_f64_matmul, mojor_gpu_cap_f64_reduce, mojor_gpu_cap_i32_scatter.
+configure: Refresh bundled artifacts with:
+configure:   MOJOR_UPDATE_BACKEND_BUNDLE=1 MOJOR_COPY_LIBS_TO_SRC=1 bash packages/mojor/build.sh
+EOF
+  exit 1
+fi
+
+cat >&2 <<EOF
+configure: ERROR: Unable to provision required backend libraries for platform '$PLATFORM_KEY'.
+configure: Looked for bundled artifacts under '$BUNDLE_ROOT/$PLATFORM_KEY' and build fallback with mojo.
+configure: To refresh bundled artifacts from this checkout run:
+configure:   MOJOR_UPDATE_BACKEND_BUNDLE=1 MOJOR_COPY_LIBS_TO_SRC=1 bash packages/mojor/build.sh
+EOF
+exit 1
