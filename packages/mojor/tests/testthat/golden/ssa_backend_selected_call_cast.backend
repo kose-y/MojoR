@@ -1,0 +1,6 @@
+ssa_backend_selected entry=entry1
+entry1(%v1/*x*/):
+  %v2 = call(%v1) callee=sin
+  %v3 = cast_i32(%v2) cast_to=i32
+  ret %v3
+  succ: <none>

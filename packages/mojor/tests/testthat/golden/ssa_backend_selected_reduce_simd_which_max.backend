@@ -1,0 +1,8 @@
+ssa_backend_selected entry=entry1
+entry1():
+  reduce_init(idx, x, n_i) reduce_mode=simd reduce_op=which.max acc=idx arg=x n_var=n_i dtype=DType.float64 empty_val=Int32(0) tie_break=first
+  reduce_step(idx, x, n_i) reduce_mode=simd reduce_op=which.max acc=idx arg=x n_var=n_i dtype=DType.float64 empty_val=Int32(0) tie_break=first
+  reduce_merge(idx, x, n_i) reduce_mode=simd reduce_op=which.max acc=idx arg=x n_var=n_i dtype=DType.float64 empty_val=Int32(0) merge_kind=simd_lane tie_break=first
+  reduce_finalize(idx, x, n_i) reduce_mode=simd reduce_op=which.max acc=idx arg=x n_var=n_i dtype=DType.float64 empty_val=Int32(0) tie_break=first
+  ret
+  succ: <none>

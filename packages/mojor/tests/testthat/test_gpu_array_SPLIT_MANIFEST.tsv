@@ -1,0 +1,11 @@
+chunk	tests	first_desc	last_desc	file
+01	20	GPU route tagging keeps compatibility attrs and deterministic reason payload	GPUArray random like constructors preserve metadata and deterministic outputs	test_gpu_array_01.R
+02	20	GPUArray like constructors validate arguments	f64 probe diagnostics helpers consume cache deterministically	test_gpu_array_02.R
+03	20	f64 matmul probe includes multiple shapes per mode	gpu_slice non-unit stride stays GPU-routed when plan cache lookup is unavailable	test_gpu_array_03.R
+04	20	GPUArray bracket indexing routes through gpu_slice for rank-1 and rank-2	GPUArray rank-1 duplicate assignment supports deduped scatter path	test_gpu_array_04.R
+05	20	GPUArray bracket assignment supports strict per-axis logical masks	GPUArray bracket assignment supports matrix and logical-matrix selectors via cpu scatter parity	test_gpu_array_05.R
+06	9	GPUArray copy-on-modify option isolates aliases for assignment-style mutation	GPUArray binary math functions support gpu_atan2/gpu_minimum/gpu_maximum	test_gpu_array_06.R
+07	20	f64 reduce capability short-circuits to explicit cpu fallback	mojor_gpu_kernel supports canonical matrix2d binary elementwise loops	test_gpu_array_07.R
+08	10	mojor_gpu_kernel supports canonical matrix2d scalar + matrix loops	matrix2d elementwise rejects unsupported forms with stable diagnostics	test_gpu_array_08.R
+09	4	GPUArray binary math kernel-fail lane tags kernel reason code across dispatch patterns	GPUArray math wrappers do not grow live buffers under repeated calls	test_gpu_array_09.R
+10	7	GPUArray Summary/mean/which methods provide scalar parity	gpu_reduce routes full-axis dims through scalar backend path	test_gpu_array_10.R

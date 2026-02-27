@@ -1,0 +1,3 @@
+# Backend symbols are provided by prebuilt Mojo shared libraries.
+OBJECTS = bridge.o
+PKG_LIBS = -L. -lmojor_backend -lmojor_backend_rng -lmojor_backend_gamma -Wl,-rpath,@loader_path -Wl,-rpath,\$$ORIGIN

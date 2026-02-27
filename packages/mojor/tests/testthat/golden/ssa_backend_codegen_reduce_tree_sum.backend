@@ -1,0 +1,8 @@
+ssa_backend_codegen target=mojo_cpu entry=entry1
+entry1():
+  cpu_reduce_init_tree_sum(acc, x, n_i) source=reduce_init reduce_mode=tree reduce_op=sum acc=acc arg=x n_var=n_i
+  cpu_reduce_step_tree_sum(acc, x, n_i) source=reduce_step reduce_mode=tree reduce_op=sum acc=acc arg=x n_var=n_i
+  cpu_reduce_merge_tree_sum_tree_pairwise(acc, x, n_i) source=reduce_merge reduce_mode=tree reduce_op=sum acc=acc arg=x n_var=n_i merge_kind=tree_pairwise
+  cpu_reduce_finalize_tree_sum(acc, x, n_i) source=reduce_finalize reduce_mode=tree reduce_op=sum acc=acc arg=x n_var=n_i
+  cpu_ret
+  succ: <none>

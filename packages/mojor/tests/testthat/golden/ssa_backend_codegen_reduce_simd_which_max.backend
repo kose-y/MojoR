@@ -1,0 +1,8 @@
+ssa_backend_codegen target=mojo_cpu entry=entry1
+entry1():
+  cpu_reduce_init_simd_which_max(idx, x, n_i) source=reduce_init reduce_mode=simd reduce_op=which.max acc=idx arg=x n_var=n_i tie_break=first
+  cpu_reduce_step_simd_which_max(idx, x, n_i) source=reduce_step reduce_mode=simd reduce_op=which.max acc=idx arg=x n_var=n_i tie_break=first
+  cpu_reduce_merge_simd_which_max_simd_lane(idx, x, n_i) source=reduce_merge reduce_mode=simd reduce_op=which.max acc=idx arg=x n_var=n_i merge_kind=simd_lane tie_break=first
+  cpu_reduce_finalize_simd_which_max(idx, x, n_i) source=reduce_finalize reduce_mode=simd reduce_op=which.max acc=idx arg=x n_var=n_i tie_break=first
+  cpu_ret
+  succ: <none>

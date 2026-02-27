@@ -1,0 +1,14 @@
+#!/bin/sh
+set -eu
+
+ROOT="$(CDPATH= cd -- "$(dirname "$0")" && pwd)"
+SRC_DIR="$ROOT/src"
+
+for ext in dylib so dll; do
+  rm -f "$SRC_DIR/libmojor_backend.$ext"
+  rm -f "$SRC_DIR/libmojor_backend_rng.$ext"
+  rm -f "$SRC_DIR/libmojor_backend_gamma.$ext"
+done
+rm -f "$SRC_DIR/bridge.o"
+
+exit 0

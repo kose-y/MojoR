@@ -1,0 +1,13 @@
+ssa_backend_selected entry=entry1
+entry1(%v1/*x*/, %v9/*out*/):
+  %v2 = call(%v1) callee=length
+  %v3 = call(%v2) callee=numeric
+  %v4 = mov_const() value=0.0
+  %v5 = cmp_gt(%v1, %v4)
+  %v6 = load_index(%v1, %v5)
+  %v7 = mov_const() value=1.0
+  %v8 = add(%v6, %v7)
+  mem_store_subscript_scalar(%v9, %v5, %v8) target=out index_kinds=[scalar]
+  effect_stmt_raw()
+  ret
+  succ: <none>

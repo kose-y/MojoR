@@ -1,0 +1,6 @@
+# Behavior-anchored fallback patterns for fallback isolation gating.
+# Keep patterns specific to runtime fallback/deopt control flow.
+
+mojor_build: object_mode fallback enabled:
+using subprocess fallback wrapper
+gpu_func_raw: broadcast_nd GPU launch failed; falling back to CPU host execution

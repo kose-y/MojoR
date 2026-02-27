@@ -1,0 +1,9 @@
+ssa_fn entry=entry1
+entry1(%v1/*v*/, %v2/*mat*/, %v3/*i*/, %v5/*rhs*/, %v6/*out*/, %v8/*n*/):
+  %v4 = idx_missing()
+  store_subscript(%v2, %v3, %v4, %v1)
+  %v7 = const()
+  %v9 = idx_slice(%v7, %v8)
+  store_subscript(%v6, %v9, %v5)
+  %v10 = const()
+  ret %v10
