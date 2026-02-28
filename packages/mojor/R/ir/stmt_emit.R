@@ -233,6 +233,53 @@
   )
 }
 
+.mojor_ir_extract_if_cond <- function(line) {
+  hit <- regexec("^\\s*if\\s+(.*):\\s*$", line, perl = TRUE)
+  reg <- regmatches(line, hit)[[1]]
+  if (length(reg) < 2) {
+    return(character(0))
+  }
+  cond <- trimws(reg[[2]])
+  if (!nzchar(cond)) {
+    return(character(0))
+  }
+  cond
+}
+
+.mojor_ir_oob_cond_from_guard_lines <- function(lines) {
+  if (is.null(lines) || length(lines) == 0L) {
+    return(NULL)
+  }
+  cond_parts <- unique(unlist(lapply(lines, .mojor_ir_extract_if_cond), use.names = FALSE))
+  if (length(cond_parts) == 0L) {
+    return(NULL)
+  }
+  paste(cond_parts, collapse = " or ")
+}
+
+.mojor_ir_wrap_assign_line_oob <- function(assign_line, indent, oob_cond) {
+  if (is.null(oob_cond) || !nzchar(oob_cond)) {
+    return(assign_line)
+  }
+  assign_body <- assign_line
+  if (startsWith(assign_line, indent)) {
+    assign_body <- substring(assign_line, nchar(indent) + 1L)
+  } else {
+    assign_body <- trimws(assign_line)
+  }
+  oob_line <- if (isTRUE(.mojor_state$options$index_bounds)) {
+    paste0(indent, "    __mojor_na_flag[0] = Int32(2)")
+  } else {
+    paste0(indent, "    _mojor_oob()")
+  }
+  c(
+    paste0(indent, "if ", oob_cond, ":"),
+    oob_line,
+    paste0(indent, "else:"),
+    paste0(indent, "    ", assign_body)
+  )
+}
+
 .mojor_ir_stmt_emit <- function(node, indent = "    ", zero_based_vars = NULL, out_name = NULL, na_guard = "forbid", bounds_check = FALSE, loop_var = NULL, scalar_name = NULL, type_env = NULL, unroll = NULL, schedule = NULL, bounds_guard_cache = NULL, na_guard_cache = NULL) {
  # Step 4.4: Added loop_var parameter for guard optimization
  # Step 5.1: Added type_env parameter for logical array support
@@ -1323,38 +1370,9 @@
           loop_var,
           guard_cache = NULL
         )
-        extract_if_cond <- function(line) {
-          hit <- regexec("^\\s*if\\s+(.*):\\s*$", line, perl = TRUE)
-          reg <- regmatches(line, hit)[[1]]
-          if (length(reg) < 2) {
-            return(character(0))
-          }
-          cond <- trimws(reg[[2]])
-          if (!nzchar(cond)) {
-            return(character(0))
-          }
-          cond
-        }
-        lhs_cond_parts <- unique(unlist(lapply(lhs_guard_result$lines, extract_if_cond), use.names = FALSE))
-        if (length(lhs_cond_parts) > 0) {
-          lhs_oob_cond <- paste(lhs_cond_parts, collapse = " or ")
-          assign_body <- assign_line
-          if (startsWith(assign_line, indent)) {
-            assign_body <- substring(assign_line, nchar(indent) + 1L)
-          } else {
-            assign_body <- trimws(assign_line)
-          }
-          oob_line <- if (isTRUE(.mojor_state$options$index_bounds)) {
-            paste0(indent, "    __mojor_na_flag[0] = Int32(2)")
-          } else {
-            paste0(indent, "    _mojor_oob()")
-          }
-          assign_lines <- c(
-            paste0(indent, "if ", lhs_oob_cond, ":"),
-            oob_line,
-            paste0(indent, "else:"),
-            paste0(indent, "    ", assign_body)
-          )
+        lhs_oob_cond <- .mojor_ir_oob_cond_from_guard_lines(lhs_guard_result$lines)
+        if (!is.null(lhs_oob_cond) && nzchar(lhs_oob_cond)) {
+          assign_lines <- .mojor_ir_wrap_assign_line_oob(assign_line, indent, lhs_oob_cond)
         }
       }
 
@@ -1484,44 +1502,10 @@
         loop_var,
         guard_cache = NULL
       )
-      extract_if_cond <- function(line) {
-        hit <- regexec("^\\s*if\\s+(.*):\\s*$", line, perl = TRUE)
-        reg <- regmatches(line, hit)[[1]]
-        if (length(reg) < 2) {
-          return(character(0))
-        }
-        cond <- trimws(reg[[2]])
-        if (!nzchar(cond)) {
-          return(character(0))
-        }
-        cond
-      }
-      lhs_cond_parts <- unique(unlist(lapply(lhs_guard_result$lines, extract_if_cond), use.names = FALSE))
-      if (length(lhs_cond_parts) > 0) {
-        lhs_write_oob_cond <- paste(lhs_cond_parts, collapse = " or ")
-      }
+      lhs_write_oob_cond <- .mojor_ir_oob_cond_from_guard_lines(lhs_guard_result$lines)
     }
     wrap_assign_line <- function(assign_line) {
-      if (is.null(lhs_write_oob_cond) || !nzchar(lhs_write_oob_cond)) {
-        return(assign_line)
-      }
-      assign_body <- assign_line
-      if (startsWith(assign_line, indent)) {
-        assign_body <- substring(assign_line, nchar(indent) + 1L)
-      } else {
-        assign_body <- trimws(assign_line)
-      }
-      oob_line <- if (isTRUE(.mojor_state$options$index_bounds)) {
-        paste0(indent, "    __mojor_na_flag[0] = Int32(2)")
-      } else {
-        paste0(indent, "    _mojor_oob()")
-      }
-      c(
-        paste0(indent, "if ", lhs_write_oob_cond, ":"),
-        oob_line,
-        paste0(indent, "else:"),
-        paste0(indent, "    ", assign_body)
-      )
+      .mojor_ir_wrap_assign_line_oob(assign_line, indent, lhs_write_oob_cond)
     }
 
  # Step 4: NA guard handling
