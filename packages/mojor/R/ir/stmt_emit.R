@@ -111,6 +111,128 @@
   list(is_const = TRUE, value = lit, expr = NULL)
 }
 
+.mojor_ir_sample_emit_uniform_pick_unused <- function(base_indent, limit_expr, used_var) {
+  c(
+    paste0(base_indent, "while True:"),
+    paste0(base_indent, "  idx = Int((_rng_next_f64(__mojor_rng_state) * ", limit_expr, ") + 1)"),
+    paste0(base_indent, "  if idx > Int(", limit_expr, "): idx = Int(", limit_expr, ")"),
+    paste0(base_indent, "  if not ", used_var, "[Int(idx - 1)]:"),
+    paste0(base_indent, "    break")
+  )
+}
+
+.mojor_ir_sample_emit_weighted_replace_true <- function(
+  base_indent,
+  size_str,
+  limit_expr,
+  prob_info,
+  prob_total,
+  prob_target,
+  prob_acc,
+  prob_j,
+  prob_w,
+  out_line
+) {
+  c(
+    paste0(base_indent, "for i in range(1, ", size_str, " + 1):"),
+    paste0(base_indent, "  var idx: Int = 1"),
+    paste0(base_indent, "  if Int(", prob_info$len, ") == Int(", limit_expr, "):"),
+    paste0(base_indent, "    var ", prob_total, ": Float64 = 0.0"),
+    paste0(base_indent, "    for ", prob_j, " in range(Int(", limit_expr, ")):"),
+    paste0(base_indent, "      var ", prob_w, " = _mojor_read_f64(", prob_info$name, ", ", prob_j, ", Int(", prob_info$len, "))"),
+    paste0(base_indent, "      if ", prob_w, " > 0.0:"),
+    paste0(base_indent, "        ", prob_total, " += ", prob_w),
+    paste0(base_indent, "    if ", prob_total, " > 0.0:"),
+    paste0(base_indent, "      var ", prob_target, " = _rng_next_f64(__mojor_rng_state) * ", prob_total),
+    paste0(base_indent, "      var ", prob_acc, ": Float64 = 0.0"),
+    paste0(base_indent, "      idx = Int(", limit_expr, ")"),
+    paste0(base_indent, "      for ", prob_j, " in range(Int(", limit_expr, ")):"),
+    paste0(base_indent, "        var ", prob_w, " = _mojor_read_f64(", prob_info$name, ", ", prob_j, ", Int(", prob_info$len, "))"),
+    paste0(base_indent, "        if ", prob_w, " > 0.0:"),
+    paste0(base_indent, "          ", prob_acc, " += ", prob_w),
+    paste0(base_indent, "          if ", prob_target, " <= ", prob_acc, ":"),
+    paste0(base_indent, "            idx = Int(", prob_j, " + 1)"),
+    paste0(base_indent, "            break"),
+    paste0(base_indent, "    else:"),
+    paste0(base_indent, "      idx = Int((_rng_next_f64(__mojor_rng_state) * ", limit_expr, ") + 1)"),
+    paste0(base_indent, "      if idx > Int(", limit_expr, "): idx = Int(", limit_expr, ")"),
+    paste0(base_indent, "  else:"),
+    paste0(base_indent, "    idx = Int((_rng_next_f64(__mojor_rng_state) * ", limit_expr, ") + 1)"),
+    paste0(base_indent, "    if idx > Int(", limit_expr, "): idx = Int(", limit_expr, ")"),
+    paste0(base_indent, "  ", out_line)
+  )
+}
+
+.mojor_ir_sample_emit_weighted_replace_false <- function(
+  base_indent,
+  size_str,
+  limit_expr,
+  prob_info,
+  prob_total,
+  prob_target,
+  prob_acc,
+  prob_j,
+  prob_w,
+  used_var,
+  out_line
+) {
+  c(
+    paste0(base_indent, "var ", used_var, " = alloc_bool(", limit_expr, ")"),
+    paste0(base_indent, "for i in range(1, ", size_str, " + 1):"),
+    paste0(base_indent, "  var idx: Int = 1"),
+    paste0(base_indent, "  if Int(", prob_info$len, ") == Int(", limit_expr, "):"),
+    paste0(base_indent, "    var ", prob_total, ": Float64 = 0.0"),
+    paste0(base_indent, "    for ", prob_j, " in range(Int(", limit_expr, ")):"),
+    paste0(base_indent, "      if ", used_var, "[Int(", prob_j, ")]:"),
+    paste0(base_indent, "        continue"),
+    paste0(base_indent, "      var ", prob_w, " = _mojor_read_f64(", prob_info$name, ", ", prob_j, ", Int(", prob_info$len, "))"),
+    paste0(base_indent, "      if ", prob_w, " > 0.0:"),
+    paste0(base_indent, "        ", prob_total, " += ", prob_w),
+    paste0(base_indent, "    if ", prob_total, " > 0.0:"),
+    paste0(base_indent, "      var ", prob_target, " = _rng_next_f64(__mojor_rng_state) * ", prob_total),
+    paste0(base_indent, "      var ", prob_acc, ": Float64 = 0.0"),
+    paste0(base_indent, "      idx = Int(", limit_expr, ")"),
+    paste0(base_indent, "      for ", prob_j, " in range(Int(", limit_expr, ")):"),
+    paste0(base_indent, "        if ", used_var, "[Int(", prob_j, ")]:"),
+    paste0(base_indent, "          continue"),
+    paste0(base_indent, "        var ", prob_w, " = _mojor_read_f64(", prob_info$name, ", ", prob_j, ", Int(", prob_info$len, "))"),
+    paste0(base_indent, "        if ", prob_w, " > 0.0:"),
+    paste0(base_indent, "          ", prob_acc, " += ", prob_w),
+    paste0(base_indent, "          if ", prob_target, " <= ", prob_acc, ":"),
+    paste0(base_indent, "            idx = Int(", prob_j, " + 1)"),
+    paste0(base_indent, "            break"),
+    paste0(base_indent, "    else:"),
+    .mojor_ir_sample_emit_uniform_pick_unused(paste0(base_indent, "      "), limit_expr, used_var),
+    paste0(base_indent, "  else:"),
+    .mojor_ir_sample_emit_uniform_pick_unused(paste0(base_indent, "    "), limit_expr, used_var),
+    paste0(base_indent, "  ", used_var, "[Int(idx - 1)] = True"),
+    paste0(base_indent, "  ", out_line)
+  )
+}
+
+.mojor_ir_sample_emit_replace_true <- function(base_indent, size_str, limit_expr, out_line) {
+  c(
+    paste0(base_indent, "for i in range(1, ", size_str, " + 1):"),
+    paste0(base_indent, "  idx = Int((_rng_next_f64(__mojor_rng_state) * ", limit_expr, ") + 1)"),
+    paste0(base_indent, "  if idx > ", limit_expr, ": idx = ", limit_expr),
+    paste0(base_indent, "  ", out_line)
+  )
+}
+
+.mojor_ir_sample_emit_replace_false <- function(base_indent, size_str, limit_expr, used_var, out_line) {
+  c(
+    paste0(base_indent, used_var, " = alloc_bool(", limit_expr, ")"),
+    paste0(base_indent, "for i in range(1, ", size_str, " + 1):"),
+    paste0(base_indent, "  while True:"),
+    paste0(base_indent, "    idx = Int((_rng_next_f64(__mojor_rng_state) * ", limit_expr, ") + 1)"),
+    paste0(base_indent, "    if idx > ", limit_expr, ": idx = ", limit_expr),
+    paste0(base_indent, "    if not ", used_var, "[Int(idx - 1)]:"),
+    paste0(base_indent, "      ", used_var, "[Int(idx - 1)] = True"),
+    paste0(base_indent, "      ", out_line),
+    paste0(base_indent, "      break")
+  )
+}
+
 .mojor_ir_stmt_emit <- function(node, indent = "    ", zero_based_vars = NULL, out_name = NULL, na_guard = "forbid", bounds_check = FALSE, loop_var = NULL, scalar_name = NULL, type_env = NULL, unroll = NULL, schedule = NULL, bounds_guard_cache = NULL, na_guard_cache = NULL) {
  # Step 4.4: Added loop_var parameter for guard optimization
  # Step 5.1: Added type_env parameter for logical array support
@@ -2438,122 +2560,88 @@
     prob_w <- .mojor_unique_loop_var("__mojor_prob_w", used_names)
     used <- .mojor_unique_loop_var("__mojor_prob_used", used_names)
 
-    emit_uniform_pick_unused <- function(base_indent) {
-      c(
-        paste0(base_indent, "while True:"),
-        paste0(base_indent, "  idx = Int((_rng_next_f64(__mojor_rng_state) * ", n_str, ") + 1)"),
-        paste0(base_indent, "  if idx > Int(", n_str, "): idx = Int(", n_str, ")"),
-        paste0(base_indent, "  if not ", used, "[Int(idx - 1)]:"),
-        paste0(base_indent, "    break")
-      )
-    }
-    emit_weighted_replace_true <- function(base_indent) {
-      c(
-        paste0(base_indent, "for i in range(1, ", size_str, " + 1):"),
-        paste0(base_indent, "  var idx: Int = 1"),
-        paste0(base_indent, "  if Int(", prob_info$len, ") == Int(", n_str, "):"),
-        paste0(base_indent, "    var ", prob_total, ": Float64 = 0.0"),
-        paste0(base_indent, "    for ", prob_j, " in range(Int(", n_str, ")):"),
-        paste0(base_indent, "      var ", prob_w, " = _mojor_read_f64(", prob_info$name, ", ", prob_j, ", Int(", prob_info$len, "))"),
-        paste0(base_indent, "      if ", prob_w, " > 0.0:"),
-        paste0(base_indent, "        ", prob_total, " += ", prob_w),
-        paste0(base_indent, "    if ", prob_total, " > 0.0:"),
-        paste0(base_indent, "      var ", prob_target, " = _rng_next_f64(__mojor_rng_state) * ", prob_total),
-        paste0(base_indent, "      var ", prob_acc, ": Float64 = 0.0"),
-        paste0(base_indent, "      idx = Int(", n_str, ")"),
-        paste0(base_indent, "      for ", prob_j, " in range(Int(", n_str, ")):"),
-        paste0(base_indent, "        var ", prob_w, " = _mojor_read_f64(", prob_info$name, ", ", prob_j, ", Int(", prob_info$len, "))"),
-        paste0(base_indent, "        if ", prob_w, " > 0.0:"),
-        paste0(base_indent, "          ", prob_acc, " += ", prob_w),
-        paste0(base_indent, "          if ", prob_target, " <= ", prob_acc, ":"),
-        paste0(base_indent, "            idx = Int(", prob_j, " + 1)"),
-        paste0(base_indent, "            break"),
-        paste0(base_indent, "    else:"),
-        paste0(base_indent, "      idx = Int((_rng_next_f64(__mojor_rng_state) * ", n_str, ") + 1)"),
-        paste0(base_indent, "      if idx > Int(", n_str, "): idx = Int(", n_str, ")"),
-        paste0(base_indent, "  else:"),
-        paste0(base_indent, "    idx = Int((_rng_next_f64(__mojor_rng_state) * ", n_str, ") + 1)"),
-        paste0(base_indent, "    if idx > Int(", n_str, "): idx = Int(", n_str, ")"),
-        paste0(base_indent, "  ", out_name, "[Int(i - 1)] = idx")
-      )
-    }
-    emit_weighted_replace_false <- function(base_indent) {
-      c(
-        paste0(base_indent, "var ", used, " = alloc_bool(", n_str, ")"),
-        paste0(base_indent, "for i in range(1, ", size_str, " + 1):"),
-        paste0(base_indent, "  var idx: Int = 1"),
-        paste0(base_indent, "  if Int(", prob_info$len, ") == Int(", n_str, "):"),
-        paste0(base_indent, "    var ", prob_total, ": Float64 = 0.0"),
-        paste0(base_indent, "    for ", prob_j, " in range(Int(", n_str, ")):"),
-        paste0(base_indent, "      if ", used, "[Int(", prob_j, ")]:"),
-        paste0(base_indent, "        continue"),
-        paste0(base_indent, "      var ", prob_w, " = _mojor_read_f64(", prob_info$name, ", ", prob_j, ", Int(", prob_info$len, "))"),
-        paste0(base_indent, "      if ", prob_w, " > 0.0:"),
-        paste0(base_indent, "        ", prob_total, " += ", prob_w),
-        paste0(base_indent, "    if ", prob_total, " > 0.0:"),
-        paste0(base_indent, "      var ", prob_target, " = _rng_next_f64(__mojor_rng_state) * ", prob_total),
-        paste0(base_indent, "      var ", prob_acc, ": Float64 = 0.0"),
-        paste0(base_indent, "      idx = Int(", n_str, ")"),
-        paste0(base_indent, "      for ", prob_j, " in range(Int(", n_str, ")):"),
-        paste0(base_indent, "        if ", used, "[Int(", prob_j, ")]:"),
-        paste0(base_indent, "          continue"),
-        paste0(base_indent, "        var ", prob_w, " = _mojor_read_f64(", prob_info$name, ", ", prob_j, ", Int(", prob_info$len, "))"),
-        paste0(base_indent, "        if ", prob_w, " > 0.0:"),
-        paste0(base_indent, "          ", prob_acc, " += ", prob_w),
-        paste0(base_indent, "          if ", prob_target, " <= ", prob_acc, ":"),
-        paste0(base_indent, "            idx = Int(", prob_j, " + 1)"),
-        paste0(base_indent, "            break"),
-        paste0(base_indent, "    else:"),
-        emit_uniform_pick_unused(paste0(base_indent, "      ")),
-        paste0(base_indent, "  else:"),
-        emit_uniform_pick_unused(paste0(base_indent, "    ")),
-        paste0(base_indent, "  ", used, "[Int(idx - 1)] = True"),
-        paste0(base_indent, "  ", out_name, "[Int(i - 1)] = idx")
-      )
-    }
-
+    weighted_out_line <- paste0(out_name, "[Int(i - 1)] = idx")
     if (isTRUE(replace_mode$is_const)) {
-      return(if (isTRUE(replace_mode$value)) emit_weighted_replace_true(indent) else emit_weighted_replace_false(indent))
+      return(
+        if (isTRUE(replace_mode$value)) {
+          .mojor_ir_sample_emit_weighted_replace_true(
+            indent,
+            size_str,
+            n_str,
+            prob_info,
+            prob_total,
+            prob_target,
+            prob_acc,
+            prob_j,
+            prob_w,
+            weighted_out_line
+          )
+        } else {
+          .mojor_ir_sample_emit_weighted_replace_false(
+            indent,
+            size_str,
+            n_str,
+            prob_info,
+            prob_total,
+            prob_target,
+            prob_acc,
+            prob_j,
+            prob_w,
+            used,
+            weighted_out_line
+          )
+        }
+      )
     }
     return(c(
       paste0(indent, "if ", replace_mode$expr, ":"),
-      emit_weighted_replace_true(paste0(indent, "  ")),
+      .mojor_ir_sample_emit_weighted_replace_true(
+        paste0(indent, "  "),
+        size_str,
+        n_str,
+        prob_info,
+        prob_total,
+        prob_target,
+        prob_acc,
+        prob_j,
+        prob_w,
+        weighted_out_line
+      ),
       paste0(indent, "else:"),
-      emit_weighted_replace_false(paste0(indent, "  "))
+      .mojor_ir_sample_emit_weighted_replace_false(
+        paste0(indent, "  "),
+        size_str,
+        n_str,
+        prob_info,
+        prob_total,
+        prob_target,
+        prob_acc,
+        prob_j,
+        prob_w,
+        used,
+        weighted_out_line
+      )
     ))
   }
 
-  emit_replace_true <- function(base_indent) {
-    c(
-      paste0(base_indent, "for i in range(1, ", size_str, " + 1):"),
-      paste0(base_indent, "  idx = Int((_rng_next_f64(__mojor_rng_state) * ", n_str, ") + 1)"),
-      paste0(base_indent, "  if idx > ", n_str, ": idx = ", n_str),
-      paste0(base_indent, "  ", out_name, "[Int(i - 1)] = idx")
-    )
-  }
-  emit_replace_false <- function(base_indent) {
-    c(
-      paste0(base_indent, "used = alloc_bool(", n_str, ")"),
-      paste0(base_indent, "for i in range(1, ", size_str, " + 1):"),
-      paste0(base_indent, "  while True:"),
-      paste0(base_indent, "    idx = Int((_rng_next_f64(__mojor_rng_state) * ", n_str, ") + 1)"),
-      paste0(base_indent, "    if idx > ", n_str, ": idx = ", n_str),
-      paste0(base_indent, "    if not used[Int(idx - 1)]:"),
-      paste0(base_indent, "      used[Int(idx - 1)] = True"),
-      paste0(base_indent, "      ", out_name, "[Int(i - 1)] = idx"),
-      paste0(base_indent, "      break")
-    )
-  }
+  out_line <- paste0(out_name, "[Int(i - 1)] = idx")
   lines <- character(0)
   if (isTRUE(replace_mode$is_const)) {
-    lines <- c(lines, if (isTRUE(replace_mode$value)) emit_replace_true(indent) else emit_replace_false(indent))
+    lines <- c(
+      lines,
+      if (isTRUE(replace_mode$value)) {
+        .mojor_ir_sample_emit_replace_true(indent, size_str, n_str, out_line)
+      } else {
+        .mojor_ir_sample_emit_replace_false(indent, size_str, n_str, "used", out_line)
+      }
+    )
   } else {
     lines <- c(
       lines,
       paste0(indent, "if ", replace_mode$expr, ":"),
-      emit_replace_true(paste0(indent, "  ")),
+      .mojor_ir_sample_emit_replace_true(paste0(indent, "  "), size_str, n_str, out_line),
       paste0(indent, "else:"),
-      emit_replace_false(paste0(indent, "  "))
+      .mojor_ir_sample_emit_replace_false(paste0(indent, "  "), size_str, n_str, "used", out_line)
     )
   }
 
@@ -2633,123 +2721,89 @@
     prob_w <- .mojor_unique_loop_var("__mojor_prob_w", used_names)
     used <- .mojor_unique_loop_var("__mojor_prob_used", used_names)
 
-    emit_uniform_pick_unused <- function(base_indent) {
-      c(
-        paste0(base_indent, "while True:"),
-        paste0(base_indent, "  idx = Int((_rng_next_f64(__mojor_rng_state) * ", x_len, ") + 1)"),
-        paste0(base_indent, "  if idx > Int(", x_len, "): idx = Int(", x_len, ")"),
-        paste0(base_indent, "  if not ", used, "[Int(idx - 1)]:"),
-        paste0(base_indent, "    break")
-      )
-    }
-    emit_weighted_replace_true <- function(base_indent) {
-      c(
-        paste0(base_indent, "for i in range(1, ", size_str, " + 1):"),
-        paste0(base_indent, "  var idx: Int = 1"),
-        paste0(base_indent, "  if Int(", prob_info$len, ") == Int(", x_len, "):"),
-        paste0(base_indent, "    var ", prob_total, ": Float64 = 0.0"),
-        paste0(base_indent, "    for ", prob_j, " in range(Int(", x_len, ")):"),
-        paste0(base_indent, "      var ", prob_w, " = _mojor_read_f64(", prob_info$name, ", ", prob_j, ", Int(", prob_info$len, "))"),
-        paste0(base_indent, "      if ", prob_w, " > 0.0:"),
-        paste0(base_indent, "        ", prob_total, " += ", prob_w),
-        paste0(base_indent, "    if ", prob_total, " > 0.0:"),
-        paste0(base_indent, "      var ", prob_target, " = _rng_next_f64(__mojor_rng_state) * ", prob_total),
-        paste0(base_indent, "      var ", prob_acc, ": Float64 = 0.0"),
-        paste0(base_indent, "      idx = Int(", x_len, ")"),
-        paste0(base_indent, "      for ", prob_j, " in range(Int(", x_len, ")):"),
-        paste0(base_indent, "        var ", prob_w, " = _mojor_read_f64(", prob_info$name, ", ", prob_j, ", Int(", prob_info$len, "))"),
-        paste0(base_indent, "        if ", prob_w, " > 0.0:"),
-        paste0(base_indent, "          ", prob_acc, " += ", prob_w),
-        paste0(base_indent, "          if ", prob_target, " <= ", prob_acc, ":"),
-        paste0(base_indent, "            idx = Int(", prob_j, " + 1)"),
-        paste0(base_indent, "            break"),
-        paste0(base_indent, "    else:"),
-        paste0(base_indent, "      idx = Int((_rng_next_f64(__mojor_rng_state) * ", x_len, ") + 1)"),
-        paste0(base_indent, "      if idx > Int(", x_len, "): idx = Int(", x_len, ")"),
-        paste0(base_indent, "  else:"),
-        paste0(base_indent, "    idx = Int((_rng_next_f64(__mojor_rng_state) * ", x_len, ") + 1)"),
-        paste0(base_indent, "    if idx > Int(", x_len, "): idx = Int(", x_len, ")"),
-        paste0(base_indent, "  ", out_name, "[Int(i - 1)] = ", sample_read, "(", x_name, ", Int(idx - 1), Int(", x_len, "))")
-      )
-    }
-    emit_weighted_replace_false <- function(base_indent) {
-      c(
-        paste0(base_indent, "var ", used, " = alloc_bool(", x_len, ")"),
-        paste0(base_indent, "for i in range(1, ", size_str, " + 1):"),
-        paste0(base_indent, "  var idx: Int = 1"),
-        paste0(base_indent, "  if Int(", prob_info$len, ") == Int(", x_len, "):"),
-        paste0(base_indent, "    var ", prob_total, ": Float64 = 0.0"),
-        paste0(base_indent, "    for ", prob_j, " in range(Int(", x_len, ")):"),
-        paste0(base_indent, "      if ", used, "[Int(", prob_j, ")]:"),
-        paste0(base_indent, "        continue"),
-        paste0(base_indent, "      var ", prob_w, " = _mojor_read_f64(", prob_info$name, ", ", prob_j, ", Int(", prob_info$len, "))"),
-        paste0(base_indent, "      if ", prob_w, " > 0.0:"),
-        paste0(base_indent, "        ", prob_total, " += ", prob_w),
-        paste0(base_indent, "    if ", prob_total, " > 0.0:"),
-        paste0(base_indent, "      var ", prob_target, " = _rng_next_f64(__mojor_rng_state) * ", prob_total),
-        paste0(base_indent, "      var ", prob_acc, ": Float64 = 0.0"),
-        paste0(base_indent, "      idx = Int(", x_len, ")"),
-        paste0(base_indent, "      for ", prob_j, " in range(Int(", x_len, ")):"),
-        paste0(base_indent, "        if ", used, "[Int(", prob_j, ")]:"),
-        paste0(base_indent, "          continue"),
-        paste0(base_indent, "        var ", prob_w, " = _mojor_read_f64(", prob_info$name, ", ", prob_j, ", Int(", prob_info$len, "))"),
-        paste0(base_indent, "        if ", prob_w, " > 0.0:"),
-        paste0(base_indent, "          ", prob_acc, " += ", prob_w),
-        paste0(base_indent, "          if ", prob_target, " <= ", prob_acc, ":"),
-        paste0(base_indent, "            idx = Int(", prob_j, " + 1)"),
-        paste0(base_indent, "            break"),
-        paste0(base_indent, "    else:"),
-        emit_uniform_pick_unused(paste0(base_indent, "      ")),
-        paste0(base_indent, "  else:"),
-        emit_uniform_pick_unused(paste0(base_indent, "    ")),
-        paste0(base_indent, "  ", used, "[Int(idx - 1)] = True"),
-        paste0(base_indent, "  ", out_name, "[Int(i - 1)] = ", sample_read, "(", x_name, ", Int(idx - 1), Int(", x_len, "))")
-      )
-    }
-
+    weighted_out_line <- paste0(out_name, "[Int(i - 1)] = ", sample_read, "(", x_name, ", Int(idx - 1), Int(", x_len, "))")
     if (isTRUE(replace_mode$is_const)) {
-      return(if (isTRUE(replace_mode$value)) emit_weighted_replace_true(indent) else emit_weighted_replace_false(indent))
+      return(
+        if (isTRUE(replace_mode$value)) {
+          .mojor_ir_sample_emit_weighted_replace_true(
+            indent,
+            size_str,
+            x_len,
+            prob_info,
+            prob_total,
+            prob_target,
+            prob_acc,
+            prob_j,
+            prob_w,
+            weighted_out_line
+          )
+        } else {
+          .mojor_ir_sample_emit_weighted_replace_false(
+            indent,
+            size_str,
+            x_len,
+            prob_info,
+            prob_total,
+            prob_target,
+            prob_acc,
+            prob_j,
+            prob_w,
+            used,
+            weighted_out_line
+          )
+        }
+      )
     }
     return(c(
       paste0(indent, "if ", replace_mode$expr, ":"),
-      emit_weighted_replace_true(paste0(indent, "  ")),
+      .mojor_ir_sample_emit_weighted_replace_true(
+        paste0(indent, "  "),
+        size_str,
+        x_len,
+        prob_info,
+        prob_total,
+        prob_target,
+        prob_acc,
+        prob_j,
+        prob_w,
+        weighted_out_line
+      ),
       paste0(indent, "else:"),
-      emit_weighted_replace_false(paste0(indent, "  "))
+      .mojor_ir_sample_emit_weighted_replace_false(
+        paste0(indent, "  "),
+        size_str,
+        x_len,
+        prob_info,
+        prob_total,
+        prob_target,
+        prob_acc,
+        prob_j,
+        prob_w,
+        used,
+        weighted_out_line
+      )
     ))
   }
 
  # Emit similar to sample_int but with array indexing
-  emit_replace_true <- function(base_indent) {
-    c(
-      paste0(base_indent, "for i in range(1, ", size_str, " + 1):"),
-      paste0(base_indent, "  idx = Int((_rng_next_f64(__mojor_rng_state) * ", x_len, ") + 1)"),
-      paste0(base_indent, "  if idx > ", x_len, ": idx = ", x_len),
-      paste0(base_indent, "  ", out_name, "[Int(i - 1)] = ", sample_read, "(", x_name, ", Int(idx - 1), ", x_len, ")")
-    )
-  }
-  emit_replace_false <- function(base_indent) {
-    c(
-      paste0(base_indent, "used = alloc_bool(", x_len, ")"),
-      paste0(base_indent, "for i in range(1, ", size_str, " + 1):"),
-      paste0(base_indent, "  while True:"),
-      paste0(base_indent, "    idx = Int((_rng_next_f64(__mojor_rng_state) * ", x_len, ") + 1)"),
-      paste0(base_indent, "    if idx > ", x_len, ": idx = ", x_len),
-      paste0(base_indent, "    if not used[Int(idx - 1)]:"),
-      paste0(base_indent, "      used[Int(idx - 1)] = True"),
-      paste0(base_indent, "      ", out_name, "[Int(i - 1)] = ", sample_read, "(", x_name, ", Int(idx - 1), ", x_len, ")"),
-      paste0(base_indent, "      break")
-    )
-  }
+  out_line <- paste0(out_name, "[Int(i - 1)] = ", sample_read, "(", x_name, ", Int(idx - 1), ", x_len, ")")
   lines <- character(0)
   if (isTRUE(replace_mode$is_const)) {
-    lines <- c(lines, if (isTRUE(replace_mode$value)) emit_replace_true(indent) else emit_replace_false(indent))
+    lines <- c(
+      lines,
+      if (isTRUE(replace_mode$value)) {
+        .mojor_ir_sample_emit_replace_true(indent, size_str, x_len, out_line)
+      } else {
+        .mojor_ir_sample_emit_replace_false(indent, size_str, x_len, "used", out_line)
+      }
+    )
   } else {
     lines <- c(
       lines,
       paste0(indent, "if ", replace_mode$expr, ":"),
-      emit_replace_true(paste0(indent, "  ")),
+      .mojor_ir_sample_emit_replace_true(paste0(indent, "  "), size_str, x_len, out_line),
       paste0(indent, "else:"),
-      emit_replace_false(paste0(indent, "  "))
+      .mojor_ir_sample_emit_replace_false(paste0(indent, "  "), size_str, x_len, "used", out_line)
     )
   }
 
